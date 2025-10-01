@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.controller.MetricsController">
+    <top>
+        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10;">
+            <Label text="Répertoire Source :" />
+            <TextField fx:id="sourcePathField" prefWidth="400" promptText="Entrez le chemin vers le code source..." />
+            <Button text="Parcourir" onAction="#handleBrowse" />
+            <Button text="Analyser" onAction="#handleAnalyze" style="-fx-font-weight: bold;" />
+        </HBox>
+    </top>
+
+    <center>
+        <TabPane fx:id="resultsTabPane" tabClosingPolicy="UNAVAILABLE">
+
+            <Tab text="Synthèse &amp; Totaux"> <GridPane fx:id="summaryGrid" hgap="10" vgap="10" style="-fx-padding: 20;">
+            </GridPane>
+            </Tab>
+
+            <Tab text="Classes et Méthodes Critiques">
+                <VBox spacing="15" style="-fx-padding: 15;">
+                    <Label text="Classes Top 10% (Méthodes/Attributs)" style="-fx-font-weight: bold;"/>
+                    <SplitPane dividerPositions="0.5">
+                        <TableView fx:id="topMethodsTable" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn text="Classe" prefWidth="250" />
+                                <TableColumn text="Nb Méthodes" prefWidth="150" />
+                            </columns>
+                        </TableView>
+                        <TableView fx:id="topAttributesTable" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn text="Classe" prefWidth="250" />
+                                <TableColumn text="Nb Attributs" prefWidth="150" />
+                            </columns>
+                        </TableView>
+                    </SplitPane>
+                    <Label text="Classes en Intersection &amp; Méthodes LoC (10%)" style="-fx-font-weight: bold;"/> <TableView fx:id="intersectingClassesTable">
+                </TableView>
+                </VBox>
+            </Tab>
+
+            <Tab text="Filtrage par Nombre de Méthodes (X)">
+                <VBox spacing="10" style="-fx-padding: 15;">
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <Label text="Classes avec plus de X méthodes. X =" />
+                        <TextField fx:id="xValueField" prefWidth="80" text="10" />
+                        <Button text="Filtrer" onAction="#handleFilterByX" />
+                    </HBox>
+                    <TableView fx:id="filteredClassesTable" VBox.vgrow="ALWAYS">
+                    </TableView>
+                </VBox>
+            </Tab>
+
+        </TabPane>
+    </center>
+</BorderPane>
