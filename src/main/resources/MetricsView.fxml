@@ -24,7 +24,7 @@
 
             <Tab text="Classes et Méthodes Critiques">
                 <VBox spacing="15" style="-fx-padding: 15;">
-                    <Label text="Classes Top 10% (Méthodes/Attributs)" style="-fx-font-weight: bold;"/>
+                    <Label text="Liste de toutes les Méthodes analysées" style="-fx-font-weight: bold;"/>
                     <SplitPane dividerPositions="0.5">
                         <TableView fx:id="topMethodsTable" VBox.vgrow="ALWAYS">
                             <columns>
