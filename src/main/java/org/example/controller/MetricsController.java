@@ -122,9 +122,15 @@ public class MetricsController {
         wmcCol.setCellValueFactory(new PropertyValueFactory<>("wmc"));
         wmcCol.setPrefWidth(80);
 
+        // Déclarez une nouvelle colonne ATFD (Integer)
+        TableColumn<ClassMetric, Integer> atfdCol = new TableColumn<>("ATFD");
+        atfdCol.setCellValueFactory(new PropertyValueFactory<>("atfd")); // Utilise getAtfd()
+        atfdCol.setPrefWidth(80);
+
+
         topAttributesTable.getColumns().clear();
         // AJOUT DE TCC ici
-        topAttributesTable.getColumns().addAll(attrClassNameCol, nbMethodsCol, nbAttributesCol, wmcCol, tccCol);
+        topAttributesTable.getColumns().addAll(attrClassNameCol, nbMethodsCol, nbAttributesCol, wmcCol, tccCol, atfdCol);
 
 
         // ========================================================================
@@ -146,6 +152,9 @@ public class MetricsController {
         interWmcCol.setCellValueFactory(new PropertyValueFactory<>("wmc"));
         interWmcCol.setPrefWidth(80);
 
+
+
+
         // Pour TCC dans ce tableau, on réutilise la définition tccCol mais en créant une nouvelle instance
         // pour éviter les problèmes si le FXML gère mal la réutilisation d'une colonne (bonne pratique)
         TableColumn<ClassMetric, Double> interTccCol = new TableColumn<>("TCC");
@@ -153,9 +162,15 @@ public class MetricsController {
         interTccCol.setPrefWidth(80);
         interTccCol.setCellFactory(tccCol.getCellFactory()); // Réutilise le formatage
 
+        // Déclarez une nouvelle colonne ATFD (Integer)
+        TableColumn<ClassMetric, Integer> interAtfdCol = new TableColumn<>("ATFD");
+        // CORRECTION ICI : Utilisez la variable interAtfdCol !
+        interAtfdCol.setCellValueFactory(new PropertyValueFactory<>("atfd")); // <-- CORRIGÉ
+        interAtfdCol.setPrefWidth(80); // <-- CORRIGÉ
+
         intersectingClassesTable.getColumns().clear();
         // AJOUT DE TCC ici
-        intersectingClassesTable.getColumns().addAll(interClassNameCol, interNbMethodsCol, interNbAttributesCol, interWmcCol, interTccCol);
+        intersectingClassesTable.getColumns().addAll(interClassNameCol, interNbMethodsCol, interNbAttributesCol, interWmcCol, interTccCol, interAtfdCol);
 
 
         // ========================================================================
@@ -179,9 +194,15 @@ public class MetricsController {
         filterTccCol.setPrefWidth(80);
         filterTccCol.setCellFactory(tccCol.getCellFactory()); // Réutilise le formatage
 
+        // Déclarez une nouvelle colonne ATFD (Integer)
+        TableColumn<ClassMetric, Integer> filterAtfdCol = new TableColumn<>("ATFD");
+        // CORRECTION ICI : Utilisez la variable filterAtfdCol !
+        filterAtfdCol.setCellValueFactory(new PropertyValueFactory<>("atfd")); // <-- CORRIGÉ
+        filterAtfdCol.setPrefWidth(80); // <-- CORRIGÉ
+
         filteredClassesTable.getColumns().clear();
         // AJOUT DE TCC ici
-        filteredClassesTable.getColumns().addAll(filterClassNameCol, filterNbMethodsCol, filterWmcCol, filterTccCol);
+        filteredClassesTable.getColumns().addAll(filterClassNameCol, filterNbMethodsCol, filterWmcCol, filterTccCol, filterAtfdCol);
     }
 
 

@@ -7,7 +7,14 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
+import com.github.javaparser.ast.expr.Expression; // Pour le type du scope (objet.attribut)
+import com.github.javaparser.ast.expr.NameExpr;    // Pour la vérification asNameExpr()
+
 import java.util.*;
+
+import com.github.javaparser.ast.expr.ThisExpr;
+import com.github.javaparser.ast.expr.SuperExpr;
+
 
 import org.example.model.ClassMetric;
 import org.example.model.MethodMetric;
@@ -25,6 +32,8 @@ public class MetricsCollector {
      * @param compilationUnits La liste des ASTs à analyser.
      * @return Une Map contenant les métriques calculées pour chaque classe.
      */
+    // Dans MetricsCollector.java
+
     public Map<String, ClassMetric> calculateMetrics(List<CompilationUnit> compilationUnits) {
         classMetrics.clear(); // Réinitialiser pour chaque nouvelle analyse
 
@@ -33,16 +42,12 @@ public class MetricsCollector {
             // Trouver toutes les déclarations de classes ou d'interfaces dans le fichier
             cu.findAll(ClassOrInterfaceDeclaration.class).forEach(classNode -> {
 
-                // CORRECTION 1 & 2 : Logique pour ignorer les types imbriqués (classes internes, anonymes, etc.)
+                // Logique pour ignorer les types imbriqués (si getFullyQualifiedName est vide)
                 if (classNode.getFullyQualifiedName().isEmpty()) {
-                    // C'est probablement une classe anonyme, locale, ou imbriquée. On l'ignore.
                     return;
                 }
 
-                // Dans MetricsCollector.java, méthode calculateMetrics
-
-// ...
-                // 1. Initialiser ClassMetric et collecter les attributs d'instance pour le TCC
+                // 1. Initialiser ClassMetric et collecter les attributs
                 String classFullName = classNode.getFullyQualifiedName().get();
                 ClassMetric classMetric = new ClassMetric(classFullName, cu.getPackageDeclaration().map(p -> p.getNameAsString()).orElse(""));
 
@@ -53,15 +58,12 @@ public class MetricsCollector {
                         .mapToInt(field -> field.getVariables().size())
                         .sum();
 
-                // Attribution ici, après le calcul et avant la boucle TCC
+                // Attribution du nombre d'attributs (Première assignation conservée)
                 classMetric.setNumberOfAttributes(totalAttributes);
 
 
                 // Collecte des noms d'attributs d'instance pour le TCC (COHÉSION)
                 classNode.getFields().forEach(field -> {
-
-                    // LIGNE SUPPRIMÉE : totalAttributes += field.getVariables().size();
-
                     // Collecte les noms des attributs d'instance pour le calcul du TCC
                     if (!field.isStatic()) {
                         field.getVariables().forEach(var -> {
@@ -69,19 +71,25 @@ public class MetricsCollector {
                         });
                     }
                 });
-                // ... (Le reste de votre méthode continue ici)
 
-                classMetric.setNumberOfAttributes(totalAttributes);
+                // Initialisation de la variable ATFD pour l'agrégation (Utilisation d'un tableau pour la mutabilité)
+                final int[] classAtfd = {0};
 
 
                 // 2. Traitement des méthodes
                 classNode.getMethods().forEach(method -> {
-                    // Calculer les métriques de méthode (LoC, CC, et collecte TCC)
+                    // L'appel doit passer classFullName pour que le visiteur ATFD fonctionne
                     MethodMetric metric = calculateMethodMetric(method, classFullName, instanceAttributeNames);
 
                     // Ajouter la métrique à la classe (met à jour le WMC, LoC total, etc.)
                     classMetric.addMethodMetric(metric);
+
+                    // NOUVEAU : Agrégation de l'ATFD pour la classe
+                    classAtfd[0] += metric.getForeignDataAccesses();
                 });
+
+                // Définir la métrique ATFD totale de la classe
+                classMetric.setAtfd(classAtfd[0]);
 
                 // 3. Calcul des métriques de classe finales (TCC)
                 classMetric.calculateTCC();
@@ -126,7 +134,7 @@ public class MetricsCollector {
 
         // 4. Analyse TCC : Détection de l'accès aux attributs
         if (n.getBody().isPresent()) {
-            MethodBodyVisitor tccVisitor = new MethodBodyVisitor(instanceAttributeNames);
+            MethodBodyVisitor tccVisitor = new MethodBodyVisitor(instanceAttributeNames, className);
             tccVisitor.visit(n.getBody().get(), metric);
         }
 
@@ -139,21 +147,46 @@ public class MetricsCollector {
      */
     private static class MethodBodyVisitor extends VoidVisitorAdapter<MethodMetric> {
         private final Set<String> instanceAttributeNames; // Attributs de la classe parente
-
-        public MethodBodyVisitor(Set<String> instanceAttributeNames) {
+        private final String currentClassName;
+        public MethodBodyVisitor(Set<String> instanceAttributeNames, String currentClassName) {
             this.instanceAttributeNames = instanceAttributeNames;
+            this.currentClassName = currentClassName;
         }
+
+        // Dans MetricsCollector.java, classe MethodBodyVisitor
 
         @Override
         public void visit(FieldAccessExpr n, MethodMetric collector) {
             super.visit(n, collector);
 
-            // 1. Détecter l'accès direct (ex: this.attribut)
             String fieldName = n.getNameAsString();
 
+            // 1. Logique TCC (Accès aux attributs locaux)
             if (instanceAttributeNames.contains(fieldName)) {
-                // C'est un attribut d'instance de la classe parente
                 collector.addAttributeUsed(fieldName);
+                return;
+            }
+
+            // 2. Logique ATFD (Accès aux attributs étrangers)
+            Expression scope = n.getScope(); // Pas d'Optional si version ancienne
+            if (scope != null) { // Vérification explicite de null
+                // Exclure 'this.attribut' (accès local implicite)
+                if (scope instanceof ThisExpr) {
+                    return;
+                }
+
+                // Exclure 'super.attribut' (héritage)
+                if (scope instanceof SuperExpr) {
+                    return;
+                }
+
+                // Si l'expression est un NameExpr (ex: 'objet.attribut'), c'est un accès potentiel
+                if (scope instanceof NameExpr) {
+                    String scopeName = ((NameExpr) scope).getNameAsString();
+                    if (!scopeName.equals(currentClassName)) {
+                        collector.incrementForeignDataAccesses();
+                    }
+                }
             }
         }
     }

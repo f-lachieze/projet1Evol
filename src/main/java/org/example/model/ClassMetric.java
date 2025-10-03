@@ -21,6 +21,9 @@ public class ClassMetric {
 
     private double tcc = 0.0;
 
+    // Access to Foreign Data (ATFD)
+    private int atfd = 0;
+
     // Contient les métriques détaillées de chaque méthode
     private final List<MethodMetric> methodMetrics = new ArrayList<>();
 
@@ -75,6 +78,15 @@ public class ClassMetric {
     public double getTcc() { return tcc; }
     public List<MethodMetric> getMethodMetrics() { return methodMetrics; }
 
+    // Getter pour ATFD
+    public int getAtfd() {
+        return atfd;
+    }
+
+    // Setter pour mettre à jour la métrique
+    public void setAtfd(int atfd) {
+        this.atfd = atfd;
+    }
 
 
 

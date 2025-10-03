@@ -16,6 +16,9 @@ public class MethodMetric {
     private int parameterCount;
     private int cyclomaticComplexity; // Essentiel pour le calcul du WMC
 
+    // NOUVEAU CHAMP : Nombre d'accès à des attributs de classes étrangères
+    private int foreignDataAccesses = 0;
+
     // NOUVEAU CHAMP : Stocke les noms des attributs de la classe utilisés par cette méthode
     private Set<String> attributesUsed = new HashSet<>();
 
@@ -37,6 +40,11 @@ public class MethodMetric {
     public int getCyclomaticComplexity() { return cyclomaticComplexity; } // Ajouté
 
     // Getter
+
+    // Getter
+    public int getForeignDataAccesses() {
+        return foreignDataAccesses;
+    }
     public Set<String> getAttributesUsed() {
         return attributesUsed;
     }
@@ -58,6 +66,11 @@ public class MethodMetric {
     // Setter pour ajouter l'attribut (utilisé par le Visitor)
     public void addAttributeUsed(String attributeName) {
         this.attributesUsed.add(attributeName);
+    }
+
+    // Incrémente le compteur d'ATFD
+    public void incrementForeignDataAccesses() {
+        this.foreignDataAccesses++;
     }
 
 }
