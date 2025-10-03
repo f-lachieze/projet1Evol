@@ -35,6 +35,7 @@ public class MetricsCollector {
         return classMetrics;
     }
 
+
     // =========================================================================
     // Visiteur JavaParser pour parcourir l'AST
     // =========================================================================
