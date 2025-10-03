@@ -1,5 +1,9 @@
 package org.example.model;
 
+import java.util.HashSet;
+import java.util.Set;
+
+
 /** Représente les métriques collectées pour une seule méthode. */
 public class MethodMetric {
 
@@ -11,6 +15,9 @@ public class MethodMetric {
     private int loc; // Lignes de code du corps de la méthode
     private int parameterCount;
     private int cyclomaticComplexity; // Essentiel pour le calcul du WMC
+
+    // NOUVEAU CHAMP : Stocke les noms des attributs de la classe utilisés par cette méthode
+    private Set<String> attributesUsed = new HashSet<>();
 
     /**
      * CONSTRUCTEUR CORRIGÉ : N'accepte que les identifiants (Nom de la méthode et de la classe parente).
@@ -29,6 +36,11 @@ public class MethodMetric {
     public int getParameterCount() { return parameterCount; }
     public int getCyclomaticComplexity() { return cyclomaticComplexity; } // Ajouté
 
+    // Getter
+    public Set<String> getAttributesUsed() {
+        return attributesUsed;
+    }
+
     // --- Setters (Nécessaires pour le MetricsCollector) ---
 
     public void setLoc(int loc) {
@@ -42,4 +54,10 @@ public class MethodMetric {
     public void setCyclomaticComplexity(int cyclomaticComplexity) {
         this.cyclomaticComplexity = cyclomaticComplexity;
     }
+
+    // Setter pour ajouter l'attribut (utilisé par le Visitor)
+    public void addAttributeUsed(String attributeName) {
+        this.attributesUsed.add(attributeName);
+    }
+
 }

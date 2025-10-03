@@ -65,25 +65,40 @@ public class MetricsController {
     public void initialize() {
 
         // ========================================================================
+        // 0. Déclaration des colonnes TCC (pour les réutiliser dans tous les tableaux)
+        // ========================================================================
+        // TCC est un Double et doit être formaté
+        TableColumn<ClassMetric, Double> tccCol = new TableColumn<>("TCC");
+        tccCol.setCellValueFactory(new PropertyValueFactory<>("tcc")); // Utilise le getter getTcc()
+        tccCol.setPrefWidth(80);
+        // Formater la valeur pour afficher seulement 3 décimales (ex: 0.500)
+        tccCol.setCellFactory(column -> new TableCell<ClassMetric, Double>() {
+            @Override
+            protected void updateItem(Double item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(String.format("%.3f", item));
+                }
+            }
+        });
+
+        // ========================================================================
         // 1. Initialisation de la TableView Top Methods (Méthodes critiques - Q1.1, #12)
         // ========================================================================
-
-        // Colonne 1 : Nom de la Classe
         TableColumn<MethodMetric, String> classNameCol = new TableColumn<>("Classe");
         classNameCol.setCellValueFactory(new PropertyValueFactory<>("parentClassName"));
         classNameCol.setPrefWidth(250);
 
-        // Colonne 2 : LoC
         TableColumn<MethodMetric, Integer> locCol = new TableColumn<>("LoC");
         locCol.setCellValueFactory(new PropertyValueFactory<>("loc"));
         locCol.setPrefWidth(100);
 
-        // Colonne 3 : Complexité Cyclomatique (CC)
         TableColumn<MethodMetric, Integer> ccCol = new TableColumn<>("CC");
         ccCol.setCellValueFactory(new PropertyValueFactory<>("cyclomaticComplexity"));
         ccCol.setPrefWidth(100);
 
-        // CORRECTION : Ajout des trois colonnes pour le tableau de gauche
         topMethodsTable.getColumns().clear();
         topMethodsTable.getColumns().addAll(classNameCol, locCol, ccCol);
 
@@ -91,7 +106,6 @@ public class MetricsController {
         // ========================================================================
         // 2. Initialisation de la TableView Top Attributes (Classes Top 10% - Q1.1, #8, #9)
         // ========================================================================
-
         TableColumn<ClassMetric, String> attrClassNameCol = new TableColumn<>("Classe");
         attrClassNameCol.setCellValueFactory(new PropertyValueFactory<>("fullName"));
         attrClassNameCol.setPrefWidth(200);
@@ -104,14 +118,18 @@ public class MetricsController {
         nbAttributesCol.setCellValueFactory(new PropertyValueFactory<>("numberOfAttributes"));
         nbAttributesCol.setPrefWidth(100);
 
+        TableColumn<ClassMetric, Integer> wmcCol = new TableColumn<>("WMC");
+        wmcCol.setCellValueFactory(new PropertyValueFactory<>("wmc"));
+        wmcCol.setPrefWidth(80);
+
         topAttributesTable.getColumns().clear();
-        topAttributesTable.getColumns().addAll(attrClassNameCol, nbMethodsCol, nbAttributesCol);
+        // AJOUT DE TCC ici
+        topAttributesTable.getColumns().addAll(attrClassNameCol, nbMethodsCol, nbAttributesCol, wmcCol, tccCol);
 
 
         // ========================================================================
         // 3. Initialisation de la TableView Intersecting Classes (Intersection - Q1.1, #10)
         // ========================================================================
-
         TableColumn<ClassMetric, String> interClassNameCol = new TableColumn<>("Classe");
         interClassNameCol.setCellValueFactory(new PropertyValueFactory<>("fullName"));
         interClassNameCol.setPrefWidth(250);
@@ -124,14 +142,25 @@ public class MetricsController {
         interNbAttributesCol.setCellValueFactory(new PropertyValueFactory<>("numberOfAttributes"));
         interNbAttributesCol.setPrefWidth(100);
 
+        TableColumn<ClassMetric, Integer> interWmcCol = new TableColumn<>("WMC");
+        interWmcCol.setCellValueFactory(new PropertyValueFactory<>("wmc"));
+        interWmcCol.setPrefWidth(80);
+
+        // Pour TCC dans ce tableau, on réutilise la définition tccCol mais en créant une nouvelle instance
+        // pour éviter les problèmes si le FXML gère mal la réutilisation d'une colonne (bonne pratique)
+        TableColumn<ClassMetric, Double> interTccCol = new TableColumn<>("TCC");
+        interTccCol.setCellValueFactory(new PropertyValueFactory<>("tcc"));
+        interTccCol.setPrefWidth(80);
+        interTccCol.setCellFactory(tccCol.getCellFactory()); // Réutilise le formatage
+
         intersectingClassesTable.getColumns().clear();
-        intersectingClassesTable.getColumns().addAll(interClassNameCol, interNbMethodsCol, interNbAttributesCol);
+        // AJOUT DE TCC ici
+        intersectingClassesTable.getColumns().addAll(interClassNameCol, interNbMethodsCol, interNbAttributesCol, interWmcCol, interTccCol);
 
 
         // ========================================================================
         // 4. Initialisation de la TableView Filtered Classes (Filtrage X - Q1.1, #11)
         // ========================================================================
-
         TableColumn<ClassMetric, String> filterClassNameCol = new TableColumn<>("Classe");
         filterClassNameCol.setCellValueFactory(new PropertyValueFactory<>("fullName"));
         filterClassNameCol.setPrefWidth(300);
@@ -140,8 +169,19 @@ public class MetricsController {
         filterNbMethodsCol.setCellValueFactory(new PropertyValueFactory<>("numberOfMethods"));
         filterNbMethodsCol.setPrefWidth(150);
 
+        TableColumn<ClassMetric, Integer> filterWmcCol = new TableColumn<>("WMC");
+        filterWmcCol.setCellValueFactory(new PropertyValueFactory<>("wmc"));
+        filterWmcCol.setPrefWidth(80);
+
+        // TCC pour ce tableau
+        TableColumn<ClassMetric, Double> filterTccCol = new TableColumn<>("TCC");
+        filterTccCol.setCellValueFactory(new PropertyValueFactory<>("tcc"));
+        filterTccCol.setPrefWidth(80);
+        filterTccCol.setCellFactory(tccCol.getCellFactory()); // Réutilise le formatage
+
         filteredClassesTable.getColumns().clear();
-        filteredClassesTable.getColumns().addAll(filterClassNameCol, filterNbMethodsCol);
+        // AJOUT DE TCC ici
+        filteredClassesTable.getColumns().addAll(filterClassNameCol, filterNbMethodsCol, filterWmcCol, filterTccCol);
     }
 
 
@@ -267,7 +307,9 @@ public class MetricsController {
                 .orElse(0);
     }
 
-// Dans MetricsController.java, section MÉTHODES UTILITAIRES
+
+
+
 
     /**
      * Logique générique pour obtenir les N% premiers éléments triés.
@@ -279,6 +321,9 @@ public class MetricsController {
 
         // Calculer le nombre d'éléments à retenir (arrondi au supérieur, minimum 1)
         int limit = (int) Math.ceil(items.size() * percent);
+
+        // S'assurer qu'au moins 1 élément est retourné si la liste n'est pas vide
+        limit = Math.max(1, limit); // <--- AJOUTER CETTE LIGNE
 
         // Créer une copie pour ne pas modifier la liste originale
         List<T> sortedItems = new ArrayList<>(items);

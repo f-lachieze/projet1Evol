@@ -3,13 +3,14 @@ package org.example.analysis;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.example.model.ClassMetric; // Assurez-vous que ce chemin est correct
-import org.example.model.MethodMetric; // Assurez-vous que ce chemin est correct
+
+import java.util.*;
+
+import org.example.model.ClassMetric;
+import org.example.model.MethodMetric;
 
 /**
  * Collecte et calcule les métriques à partir de l'arbre syntaxique abstrait (AST).
@@ -28,8 +29,66 @@ public class MetricsCollector {
         classMetrics.clear(); // Réinitialiser pour chaque nouvelle analyse
 
         for (CompilationUnit cu : compilationUnits) {
-            // Un visiteur pour parcourir l'AST de chaque unité de compilation
-            new ClassVisitor().visit(cu, null);
+
+            // Trouver toutes les déclarations de classes ou d'interfaces dans le fichier
+            cu.findAll(ClassOrInterfaceDeclaration.class).forEach(classNode -> {
+
+                // CORRECTION 1 & 2 : Logique pour ignorer les types imbriqués (classes internes, anonymes, etc.)
+                if (classNode.getFullyQualifiedName().isEmpty()) {
+                    // C'est probablement une classe anonyme, locale, ou imbriquée. On l'ignore.
+                    return;
+                }
+
+                // Dans MetricsCollector.java, méthode calculateMetrics
+
+// ...
+                // 1. Initialiser ClassMetric et collecter les attributs d'instance pour le TCC
+                String classFullName = classNode.getFullyQualifiedName().get();
+                ClassMetric classMetric = new ClassMetric(classFullName, cu.getPackageDeclaration().map(p -> p.getNameAsString()).orElse(""));
+
+                Set<String> instanceAttributeNames = new HashSet<>();
+
+                // Calcul du nombre total d'attributs (COMPTEUR)
+                final int totalAttributes = classNode.getFields().stream()
+                        .mapToInt(field -> field.getVariables().size())
+                        .sum();
+
+                // Attribution ici, après le calcul et avant la boucle TCC
+                classMetric.setNumberOfAttributes(totalAttributes);
+
+
+                // Collecte des noms d'attributs d'instance pour le TCC (COHÉSION)
+                classNode.getFields().forEach(field -> {
+
+                    // LIGNE SUPPRIMÉE : totalAttributes += field.getVariables().size();
+
+                    // Collecte les noms des attributs d'instance pour le calcul du TCC
+                    if (!field.isStatic()) {
+                        field.getVariables().forEach(var -> {
+                            instanceAttributeNames.add(var.getNameAsString());
+                        });
+                    }
+                });
+                // ... (Le reste de votre méthode continue ici)
+
+                classMetric.setNumberOfAttributes(totalAttributes);
+
+
+                // 2. Traitement des méthodes
+                classNode.getMethods().forEach(method -> {
+                    // Calculer les métriques de méthode (LoC, CC, et collecte TCC)
+                    MethodMetric metric = calculateMethodMetric(method, classFullName, instanceAttributeNames);
+
+                    // Ajouter la métrique à la classe (met à jour le WMC, LoC total, etc.)
+                    classMetric.addMethodMetric(metric);
+                });
+
+                // 3. Calcul des métriques de classe finales (TCC)
+                classMetric.calculateTCC();
+
+                // 4. Stocker la métrique de classe
+                classMetrics.put(classFullName, classMetric);
+            });
         }
 
         return classMetrics;
@@ -37,76 +96,68 @@ public class MetricsCollector {
 
 
     // =========================================================================
-    // Visiteur JavaParser pour parcourir l'AST
-    // =========================================================================
-
-    private class ClassVisitor extends VoidVisitorAdapter<Void> {
-
-        @Override
-        public void visit(ClassOrInterfaceDeclaration n, Void arg) {
-            if (!n.isInterface()) {
-                String className = n.getFullyQualifiedName().orElse(n.getNameAsString());
-
-                // 1. Création de l'objet Metric (Constructeur corrigé)
-                ClassMetric classMetric = new ClassMetric(className); // Maintenant ceci fonctionne
-
-                // 2. Calcul des métriques de classe directes (seul attributeCount est encore nécessaire ici)
-                classMetric.setNumberOfAttributes(n.getFields().size()); // Ligne 36
-                // La LoC totale et le nombre de méthodes sont maintenant calculés via addMethodMetric.
-                // classMetric.setLoc(calculateClassLoC(n)); // Cette ligne doit être supprimée
-                // classMetric.setNumberOfMethods(n.getMethods().size()); // Cette ligne doit être supprimée
-
-                // 3. Visiter les méthodes pour les métriques de méthode
-                for (MethodDeclaration method : n.getMethods()) {
-                    MethodMetric methodMetric = calculateMethodMetrics(method, className);
-                    classMetric.addMethodMetric(methodMetric); // Cette ligne met à jour WMC, LoC et nombre de méthodes
-                }
-
-                classMetrics.put(className, classMetric);
-            }
-            super.visit(n, arg);
-        }
-    }
-
-    // =========================================================================
     // Méthodes de Calcul des Métriques
     // =========================================================================
 
     /**
-     * Calcule la LoC (Lines of Code) de la classe (nombre de lignes entre le début et la fin).
+     * Calcule les métriques pour une seule méthode (LoC, CC, collecte TCC).
      */
-    private int calculateClassLoC(ClassOrInterfaceDeclaration n) {
-        // Simple calcul basé sur les positions de début et fin dans le fichier source
-        return n.getEnd().get().line - n.getBegin().get().line + 1;
-    }
-
-    /**
-     * Calcule les métriques pour une seule méthode (LoC, WMC simple).
-     */
-    // Dans MetricsCollector.java
-
-    private MethodMetric calculateMethodMetrics(MethodDeclaration n, String className) {
-        // L'appel au constructeur fonctionne maintenant !
+    private MethodMetric calculateMethodMetric(MethodDeclaration n, String className, Set<String> instanceAttributeNames) {
+        // L'appel au constructeur fonctionne
         MethodMetric metric = new MethodMetric(className, n.getNameAsString());
 
-        // 1. Calcul des LoC et attribution via Setter
-        int methodLoC = n.getEnd().get().line - n.getBegin().get().line + 1;
-        metric.setLoc(methodLoC); // Utilisation du Setter
+        // 1. Calcul des LoC
+        int methodLoC = 0;
+        if (n.getEnd().isPresent() && n.getBegin().isPresent()) {
+            methodLoC = n.getEnd().get().line - n.getBegin().get().line + 1;
+        }
+        metric.setLoc(methodLoC);
 
-        // 2. Calcul du nombre de paramètres et attribution via Setter
+        // 2. Calcul du nombre de paramètres
         int paramCount = n.getParameters().size();
-        metric.setParameterCount(paramCount); // Utilisation du Setter
+        metric.setParameterCount(paramCount);
 
-        // 3. Calcul de la Complexité Cyclomatique et attribution via Setter
+        // 3. Calcul de la Complexité Cyclomatique (CC)
         int complexity = n.findAll(Statement.class, s -> {
             return s.isIfStmt() || s.isWhileStmt() || s.isForStmt() || s.isSwitchStmt();
         }).size();
 
-        metric.setCyclomaticComplexity(complexity + 1); // Utilisation du Setter (+1 pour la complexité de base)
+        metric.setCyclomaticComplexity(complexity + 1);
+
+        // 4. Analyse TCC : Détection de l'accès aux attributs
+        if (n.getBody().isPresent()) {
+            MethodBodyVisitor tccVisitor = new MethodBodyVisitor(instanceAttributeNames);
+            tccVisitor.visit(n.getBody().get(), metric);
+        }
 
         return metric;
     }
 
-    // Vous devrez ajouter ici des méthodes pour WMC, TCC, ATFD, etc.
 
+    /**
+     * Visiteur pour détecter l'accès aux attributs (FieldAccessExpr) dans le corps d'une méthode.
+     */
+    private static class MethodBodyVisitor extends VoidVisitorAdapter<MethodMetric> {
+        private final Set<String> instanceAttributeNames; // Attributs de la classe parente
+
+        public MethodBodyVisitor(Set<String> instanceAttributeNames) {
+            this.instanceAttributeNames = instanceAttributeNames;
+        }
+
+        @Override
+        public void visit(FieldAccessExpr n, MethodMetric collector) {
+            super.visit(n, collector);
+
+            // 1. Détecter l'accès direct (ex: this.attribut)
+            String fieldName = n.getNameAsString();
+
+            if (instanceAttributeNames.contains(fieldName)) {
+                // C'est un attribut d'instance de la classe parente
+                collector.addAttributeUsed(fieldName);
+            }
+        }
+    }
+
+    // CORRECTION : La classe ClassVisitor et la méthode calculateClassLoC ont été supprimées
+    // car elles étaient redondantes ou inutilisées.
 }
