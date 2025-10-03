@@ -6,7 +6,7 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
-import javafx.scene.layout.VBox; // Ajout pour VBox
+
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
@@ -30,6 +30,10 @@ import org.example.model.MethodMetric;
 
 import java.io.File;
 
+import org.example.model.CallGraph; // <-- NOUVEL IMPORT
+import org.example.analysis.MethodCallVisitor; // <-- NOUVEL IMPORT
+
+
 public class MetricsController {
 
     // ========================================================================
@@ -49,11 +53,17 @@ public class MetricsController {
     @FXML private TextField xValueField;
     @FXML private TableView<ClassMetric> filteredClassesTable; // Ajouté (pour filteredClassesTable)
 
+    // NOUVEAUX ÉLÉMENTS pour l'affichage du Graphe d'Appel
+    @FXML private Tab callGraphTab; // Le nouvel onglet
+    @FXML private TextArea callGraphTextArea; // Le nouveau composant d'affichage
+
 
 
     private SourceCodeAnalyzer analyzer = new SourceCodeAnalyzer();
     private MetricsCollector collector = new MetricsCollector(); // <-- Initialisation
     private Map<String, ClassMetric> currentMetrics; // Pour stocker les résultats
+
+    private CallGraph callGraph = new CallGraph();
 
     // ========================================================================
     // LOGIQUE DE L'APPLICATION
@@ -508,6 +518,16 @@ public class MetricsController {
             // Affiche le classement Q1.1, #12 (Top 10% des méthodes par LoC)
             topMethodsTable.setItems(FXCollections.observableArrayList(topMethodsByLoc));
 
+            // 2.1. NOUVEAU : Construire le Graphe d'Appel
+            callGraph = new CallGraph(); // Réinitialiser
+            MethodCallVisitor callVisitor = new MethodCallVisitor();
+
+            // Exécuter le visiteur sur chaque unité de compilation
+            for (CompilationUnit cu : asts) {
+                callVisitor.visit(cu, callGraph);
+            }
+
+
             // 3. Mise à jour de la TABLEVIEW DES CLASSES (topAttributesTable - Droite)
             // Affiche le classement Q1.1, #9 (Top 10% des classes par Nombre d'Attributs)
             // NOTE: On choisit d'afficher l'un des deux classements Top 10% de classes ici.
@@ -516,6 +536,10 @@ public class MetricsController {
             // 4. Mise à jour de la TABLEVIEW D'INTERSECTION (intersectingClassesTable - Bas)
             // Affiche le résultat Q1.1, #10
             intersectingClassesTable.setItems(FXCollections.observableArrayList(intersectingClasses));
+
+            // NOUVEAU : Mise à jour de l'affichage du Graphe d'Appel (Question 2.2)
+            callGraphTextArea.setText(callGraph.toString());
+
 
             // 5. Afficher le message de succès et changer d'onglet
             showAlert("Succès", "Analyse statique terminée ! " + currentMetrics.size() + " classes analysées. Résultats mis à jour.", Alert.AlertType.INFORMATION);

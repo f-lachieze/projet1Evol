@@ -56,6 +56,21 @@
                 </VBox>
             </Tab>
 
+            <Tab text="Graphe d'Appel" fx:id="callGraphTab">
+                <content>
+                    <AnchorPane>
+                        <children>
+                            <TextArea fx:id="callGraphTextArea" editable="false">
+                                <AnchorPane.topAnchor>10.0</AnchorPane.topAnchor>
+                                <AnchorPane.rightAnchor>10.0</AnchorPane.rightAnchor>
+                                <AnchorPane.bottomAnchor>10.0</AnchorPane.bottomAnchor>
+                                <AnchorPane.leftAnchor>10.0</AnchorPane.leftAnchor>
+                            </TextArea>
+                        </children>
+                    </AnchorPane>
+                </content>
+            </Tab>
+
         </TabPane>
     </center>
 </BorderPane>
