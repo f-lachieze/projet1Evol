@@ -71,6 +71,13 @@
                 </content>
             </Tab>
 
+            <Tab text="Graphe d'Appel Visuel" fx:id="callGraphVisuelTab">
+                <content>
+                    <AnchorPane fx:id="graphPane" prefHeight="200.0" prefWidth="200.0">
+                    </AnchorPane>
+                </content>
+            </Tab>
+
         </TabPane>
     </center>
 </BorderPane>

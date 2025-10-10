@@ -1,6 +1,8 @@
 package org.example.controller;
 
 // MetricsController.java (Le Cerveau de l'interface)
+import javafx.scene.Node;
+import javafx.scene.layout.Region;
 import org.example.analysis.SourceCodeAnalyzer; // Assurez-vous d'avoir le bon package
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -22,16 +24,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set; // Ajouté pour Set
 import java.util.stream.Collectors; // Ajouté pour Collectors
+import java.io.File;
 // ...
 
 import javafx.collections.FXCollections;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.AnchorPane;
+import javafx.application.Platform;
+
 import org.example.model.MethodMetric;
 
-import java.io.File;
+// Imports GraphStream
+import org.graphstream.graph.Graph;
+import org.graphstream.graph.implementations.SingleGraph;
+import org.graphstream.ui.fx_viewer.FxViewer;
+import org.graphstream.ui.fx_viewer.FxViewPanel;
+import org.graphstream.ui.javafx.FxGraphRenderer;
+// Dans la section des imports de MetricsController.java
+
+
+// Si vous aviez import org.graphstream.ui.javafx.FxGraphRenderer; il faut le supprimer.
+
 
 import org.example.model.CallGraph; // <-- NOUVEL IMPORT
 import org.example.analysis.MethodCallVisitor; // <-- NOUVEL IMPORT
+import org.graphstream.ui.view.View;
+import org.graphstream.ui.view.Viewer;
 
 
 public class MetricsController {
@@ -56,6 +74,10 @@ public class MetricsController {
     // NOUVEAUX ÉLÉMENTS pour l'affichage du Graphe d'Appel
     @FXML private Tab callGraphTab; // Le nouvel onglet
     @FXML private TextArea callGraphTextArea; // Le nouveau composant d'affichage
+
+    // NOUVEAU pour la visualisation GraphStream
+    @FXML private Tab callGraphVisuelTab; // L'onglet lui-même
+    @FXML private AnchorPane graphPane;
 
 
 
@@ -528,6 +550,10 @@ public class MetricsController {
             }
 
 
+
+            resultsTabPane.getSelectionModel().select(4);
+
+
             // 3. Mise à jour de la TABLEVIEW DES CLASSES (topAttributesTable - Droite)
             // Affiche le classement Q1.1, #9 (Top 10% des classes par Nombre d'Attributs)
             // NOTE: On choisit d'afficher l'un des deux classements Top 10% de classes ici.
@@ -547,10 +573,75 @@ public class MetricsController {
             // Sélectionne l'onglet "Synthèse & Totaux"
             resultsTabPane.getSelectionModel().select(0);
 
+
+
+
         } else {
             showAlert("Échec", "Échec de l'analyse. Vérifiez le chemin.", Alert.AlertType.ERROR);
         }
     }
 
+    // Dans MetricsController.java
+
+    /**
+     * Construit un graphe GraphStream à partir de l'objet CallGraph et l'affiche dans le Pane JavaFX.
+     * NÉCESSITE les dépendances GraphStream (gs-core et gs-ui-fx).
+     */
+
+
+    // Dans MetricsController.java
+
+    // Dans MetricsController.java
+
+    private void displayCallGraph(CallGraph callGraph) {
+
+        // ... (Votre code pour System.setProperty, graphPane.getChildren().clear(), etc.) ...
+
+        // 2. Créer l'objet GraphStream
+        Graph graph = new SingleGraph("CallGraph");
+
+        // ... (Votre code pour ajouter le style et les noeuds/arêtes) ...
+
+        // ***************************************************************
+        // VERIFICATION CRITIQUE : Y A-T-IL DES DONNÉES ?
+        // ***************************************************************
+
+        System.out.println("Nœuds du Graphe d'Appel : " + graph.getNodeCount());
+        if (graph.getNodeCount() == 0) {
+            // Optionnel : Afficher un message dans le log ou une alerte si le graphe est vide
+            System.out.println("Graphe d'appel vide. Rien à afficher.");
+            return; // Ne pas essayer d'initialiser le Viewer si le graphe est vide
+        }
+
+
+        // 4. Créer et intégrer l'afficheur JavaFX de GraphStream
+        Viewer viewer = new FxViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
+        viewer.enableAutoLayout();
+
+
+        Platform.runLater(() -> {
+            View viewPanel;
+            try {
+                viewPanel = viewer.addView(FxViewer.DEFAULT_VIEW_ID, new org.graphstream.ui.javafx.FxGraphRenderer());
+            } catch (Exception e) {
+                System.err.println("Erreur lors de l'ajout de la vue GraphStream : " + e.getMessage());
+                return;
+            }
+
+            javafx.scene.layout.Region viewRegion = (javafx.scene.layout.Region) viewPanel;
+            viewRegion.setManaged(true);
+            viewRegion.prefWidthProperty().bind(graphPane.widthProperty());
+            viewRegion.prefHeightProperty().bind(graphPane.heightProperty());
+
+            graphPane.getChildren().add((javafx.scene.Node) viewPanel);
+
+            // ***************************************************************
+            // SOLUTION D'AFFICHAGE : Forcer la vue à se dessiner
+            // ***************************************************************
+
+            viewer.disableAutoLayout(); // Désactiver temporairement
+            viewer.enableAutoLayout(); // Réactiver (souvent suffisant pour forcer le dessin initial)
+        });
+    }
 
 }
