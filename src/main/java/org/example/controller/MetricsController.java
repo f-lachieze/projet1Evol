@@ -1,13 +1,12 @@
 package org.example.controller;
 
 // MetricsController.java (Le Cerveau de l'interface)
-import javafx.scene.Node;
-import javafx.scene.layout.Region;
 import org.example.analysis.SourceCodeAnalyzer; // Assurez-vous d'avoir le bon package
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
+import javafx.concurrent.Task;
 
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
@@ -30,7 +29,6 @@ import java.io.File;
 import javafx.collections.FXCollections;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.AnchorPane;
-import javafx.application.Platform;
 
 import org.example.model.MethodMetric;
 
@@ -39,7 +37,6 @@ import org.graphstream.graph.Graph;
 import org.graphstream.graph.implementations.SingleGraph;
 import org.graphstream.ui.fx_viewer.FxViewer;
 import org.graphstream.ui.fx_viewer.FxViewPanel;
-import org.graphstream.ui.javafx.FxGraphRenderer;
 // Dans la section des imports de MetricsController.java
 
 
@@ -48,7 +45,6 @@ import org.graphstream.ui.javafx.FxGraphRenderer;
 
 import org.example.model.CallGraph; // <-- NOUVEL IMPORT
 import org.example.analysis.MethodCallVisitor; // <-- NOUVEL IMPORT
-import org.graphstream.ui.view.View;
 import org.graphstream.ui.view.Viewer;
 
 
@@ -58,27 +54,38 @@ public class MetricsController {
     // CHAMPS FXML (Correspondant aux fx:id dans MetricsView.fxml)
     // ========================================================================
 
-    @FXML private TextField sourcePathField;
-    @FXML private GridPane summaryGrid;
-    @FXML private TabPane resultsTabPane;
+    @FXML
+    private TextField sourcePathField;
+    @FXML
+    private GridPane summaryGrid;
+    @FXML
+    private TabPane resultsTabPane;
 
     // Tableaux pour l'onglet "Classes et Méthodes Critiques"
-    @FXML private TableView<MethodMetric> topMethodsTable;
-    @FXML private TableView<ClassMetric> topAttributesTable; // Ajouté (pour topAttributesTable)
-    @FXML private TableView<ClassMetric> intersectingClassesTable; // Ajouté (pour intersectingClassesTable)
+    @FXML
+    private TableView<MethodMetric> topMethodsTable;
+    @FXML
+    private TableView<ClassMetric> topAttributesTable; // Ajouté (pour topAttributesTable)
+    @FXML
+    private TableView<ClassMetric> intersectingClassesTable; // Ajouté (pour intersectingClassesTable)
 
     // Éléments pour l'onglet "Filtrage par Nombre de Méthodes (X)"
-    @FXML private TextField xValueField;
-    @FXML private TableView<ClassMetric> filteredClassesTable; // Ajouté (pour filteredClassesTable)
+    @FXML
+    private TextField xValueField;
+    @FXML
+    private TableView<ClassMetric> filteredClassesTable; // Ajouté (pour filteredClassesTable)
 
     // NOUVEAUX ÉLÉMENTS pour l'affichage du Graphe d'Appel
-    @FXML private Tab callGraphTab; // Le nouvel onglet
-    @FXML private TextArea callGraphTextArea; // Le nouveau composant d'affichage
+    @FXML
+    private Tab callGraphTab; // Le nouvel onglet
+    @FXML
+    private TextArea callGraphTextArea; // Le nouveau composant d'affichage
 
     // NOUVEAU pour la visualisation GraphStream
-    @FXML private Tab callGraphVisuelTab; // L'onglet lui-même
-    @FXML private AnchorPane graphPane;
-
+    @FXML
+    private Tab callGraphVisuelTab; // L'onglet lui-même
+    @FXML
+    private AnchorPane graphPane;
 
 
     private SourceCodeAnalyzer analyzer = new SourceCodeAnalyzer();
@@ -90,7 +97,6 @@ public class MetricsController {
     // ========================================================================
     // LOGIQUE DE L'APPLICATION
     // ========================================================================
-
 
 
     @FXML
@@ -185,8 +191,6 @@ public class MetricsController {
         interWmcCol.setPrefWidth(80);
 
 
-
-
         // Pour TCC dans ce tableau, on réutilise la définition tccCol mais en créant une nouvelle instance
         // pour éviter les problèmes si le FXML gère mal la réutilisation d'une colonne (bonne pratique)
         TableColumn<ClassMetric, Double> interTccCol = new TableColumn<>("TCC");
@@ -255,7 +259,6 @@ public class MetricsController {
             sourcePathField.setText(selectedDirectory.getAbsolutePath());
         }
     }
-
 
 
     /**
@@ -359,9 +362,6 @@ public class MetricsController {
                 .max()
                 .orElse(0);
     }
-
-
-
 
 
     /**
@@ -493,6 +493,8 @@ public class MetricsController {
 
     // Dans MetricsController.java
 
+    // Dans MetricsController.java
+
     @FXML
     private void handleAnalyze(ActionEvent event) {
         String path = sourcePathField.getText();
@@ -502,83 +504,89 @@ public class MetricsController {
             return;
         }
 
-        // 1. Lancer l'analyse (Lecture et Parsing des fichiers)
-        boolean success = analyzer.analyze(path);
+        // Affiche une boîte de dialogue pour faire patienter l'utilisateur
+        Alert waitAlert = new Alert(Alert.AlertType.INFORMATION);
+        waitAlert.setTitle("Analyse en cours");
+        waitAlert.setHeaderText("L'analyse du code source a commencé...");
+        waitAlert.setContentText("Cette opération peut prendre quelques instants. Veuillez patienter.");
+        waitAlert.show();
 
-        if (success) {
-            // 2. Collecter et Calculer les métriques
-            List<CompilationUnit> asts = analyzer.getCompilationUnits();
-            currentMetrics = collector.calculateMetrics(asts);
+        // Crée une tâche d'arrière-plan pour ne pas bloquer l'interface
+        Task<Boolean> analysisTask = new Task<>() {
+            @Override
+            protected Boolean call() throws Exception {
+                // --- DÉBUT DU TRAVAIL EN ARRIÈRE-PLAN ---
+
+                // 1. Lancer l'analyse (Lecture et Parsing des fichiers)
+                boolean success = analyzer.analyze(path);
+                if (!success) {
+                    return false; // L'analyse a échoué
+                }
+
+                // 2. Collecter et Calculer les métriques de classe
+                List<CompilationUnit> asts = analyzer.getCompilationUnits();
+                currentMetrics = collector.calculateMetrics(asts);
+
+                // 3. Construire le Graphe d'Appel
+                callGraph = new CallGraph();
+                MethodCallVisitor callVisitor = new MethodCallVisitor();
+                for (CompilationUnit cu : asts) {
+                    callVisitor.visit(cu, callGraph);
+                }
+
+                return true; // L'analyse a réussi
+            }
+        };
+
+        // --- GESTION DE LA FIN DE LA TÂCHE (S'exécute sur le thread de l'UI) ---
+
+        // Lorsque la tâche réussit
+        analysisTask.setOnSucceeded(e -> {
+            waitAlert.close(); // Ferme la boîte d'attente
 
             // ====================================================================
-            // MISE À JOUR DE L'INTERFACE UTILISATEUR
+            // MISE À JOUR DE TOUTE L'INTERFACE UTILISATEUR
             // ====================================================================
 
             // 1. Mise à jour de la SYNTHÈSE (Onglet 1)
             updateSummary(currentMetrics);
 
-            // --- Calcul des listes de classement Top 10% ---
-
-            // Liste complète de toutes les méthodes (nécessaire pour le classement)
+            // 2. Calcul et mise à jour des classements Top 10%
             List<MethodMetric> allMethods = getAllMethodMetrics(currentMetrics);
-
-            // Q1.1, #8 : Classes Top 10% par Nombre de Méthodes
-            List<ClassMetric> topMethodsClasses = getTop10PercentByMethods(currentMetrics);
-
-            // Q1.1, #9 : Classes Top 10% par Nombre d'Attributs
-            List<ClassMetric> topAttributesClasses = getTop10PercentByAttributes(currentMetrics);
-
-            // Q1.1, #10 : Intersection
-            List<ClassMetric> intersectingClasses = getIntersection(topMethodsClasses, topAttributesClasses);
-
-            // Q1.1, #12 : Méthodes Top 10% par LoC
             List<MethodMetric> topMethodsByLoc = getTop10PercentMethodsByLoc(allMethods);
-
-            // --------------------------------------------------------------------
-
-            // 2. Mise à jour de la TABLEVIEW DES MÉTHODES (topMethodsTable - Gauche)
-            // Affiche le classement Q1.1, #12 (Top 10% des méthodes par LoC)
             topMethodsTable.setItems(FXCollections.observableArrayList(topMethodsByLoc));
 
-            // 2.1. NOUVEAU : Construire le Graphe d'Appel
-            callGraph = new CallGraph(); // Réinitialiser
-            MethodCallVisitor callVisitor = new MethodCallVisitor();
-
-            // Exécuter le visiteur sur chaque unité de compilation
-            for (CompilationUnit cu : asts) {
-                callVisitor.visit(cu, callGraph);
-            }
-
-
-
-            resultsTabPane.getSelectionModel().select(4);
-
-
-            // 3. Mise à jour de la TABLEVIEW DES CLASSES (topAttributesTable - Droite)
-            // Affiche le classement Q1.1, #9 (Top 10% des classes par Nombre d'Attributs)
-            // NOTE: On choisit d'afficher l'un des deux classements Top 10% de classes ici.
+            List<ClassMetric> topMethodsClasses = getTop10PercentByMethods(currentMetrics);
+            List<ClassMetric> topAttributesClasses = getTop10PercentByAttributes(currentMetrics);
             topAttributesTable.setItems(FXCollections.observableArrayList(topAttributesClasses));
 
-            // 4. Mise à jour de la TABLEVIEW D'INTERSECTION (intersectingClassesTable - Bas)
-            // Affiche le résultat Q1.1, #10
+            List<ClassMetric> intersectingClasses = getIntersection(topMethodsClasses, topAttributesClasses);
             intersectingClassesTable.setItems(FXCollections.observableArrayList(intersectingClasses));
 
-            // NOUVEAU : Mise à jour de l'affichage du Graphe d'Appel (Question 2.2)
-            callGraphTextArea.setText(callGraph.toString());
+            // 3. Mise à jour de l'affichage du Graphe d'Appel (Texte et Visuel)
+            if (callGraphTextArea != null) {
+                callGraphTextArea.setText(callGraph.toString());
+            }
+            if (graphPane != null) {
+                displayCallGraph(callGraph);
+            }
 
+            // 4. Afficher le message de succès final
+            showAlert("Succès", "Analyse statique terminée ! " + currentMetrics.size() + " classes analysées.", Alert.AlertType.INFORMATION);
 
-            // 5. Afficher le message de succès et changer d'onglet
-            showAlert("Succès", "Analyse statique terminée ! " + currentMetrics.size() + " classes analysées. Résultats mis à jour.", Alert.AlertType.INFORMATION);
-
-            // Sélectionne l'onglet "Synthèse & Totaux"
+            // Sélectionne le premier onglet pour montrer les résultats de synthèse
             resultsTabPane.getSelectionModel().select(0);
+        });
 
+        // Lorsque la tâche échoue
+        analysisTask.setOnFailed(e -> {
+            waitAlert.close();
+            showAlert("Erreur", "Une erreur inattendue est survenue pendant l'analyse.", Alert.AlertType.ERROR);
+            analysisTask.getException().printStackTrace(); // Affiche l'erreur dans la console pour le débogage
+        });
 
-
-
-        } else {
-            showAlert("Échec", "Échec de l'analyse. Vérifiez le chemin.", Alert.AlertType.ERROR);
-        }
+        // Démarrer la tâche dans un nouveau thread
+        new Thread(analysisTask).start();
     }
 
     // Dans MetricsController.java
@@ -590,58 +598,83 @@ public class MetricsController {
 
 
     // Dans MetricsController.java
-
-    // Dans MetricsController.java
-
     private void displayCallGraph(CallGraph callGraph) {
+        System.out.println("--- DÉBUT DU DÉBOGAGE : displayCallGraph ---");
 
-        // ... (Votre code pour System.setProperty, graphPane.getChildren().clear(), etc.) ...
-
-        // 2. Créer l'objet GraphStream
-        Graph graph = new SingleGraph("CallGraph");
-
-        // ... (Votre code pour ajouter le style et les noeuds/arêtes) ...
-
-        // ***************************************************************
-        // VERIFICATION CRITIQUE : Y A-T-IL DES DONNÉES ?
-        // ***************************************************************
-
-        System.out.println("Nœuds du Graphe d'Appel : " + graph.getNodeCount());
-        if (graph.getNodeCount() == 0) {
-            // Optionnel : Afficher un message dans le log ou une alerte si le graphe est vide
-            System.out.println("Graphe d'appel vide. Rien à afficher.");
-            return; // Ne pas essayer d'initialiser le Viewer si le graphe est vide
+        // VÉRIFICATION DE SÉCURITÉ : Ne pas afficher un graphe trop grand
+        if (callGraph.getGraph().size() > 500) { // Limite de 500 nœuds, ajustez si besoin
+            System.out.println("Graphe d'appel trop grand (" + callGraph.getGraph().size() + " nœuds) pour être affiché.");
+            graphPane.getChildren().add(new Label("Le graphe d'appel est trop grand pour être affiché visuellement."));
+            return;
         }
 
+        // ----- VÉRIFICATION 1 : Le conteneur FXML est-il bien lié ? -----
+        if (graphPane == null) {
+            System.err.println("ERREUR CRITIQUE : La variable 'graphPane' est null. Vérifiez que votre AnchorPane a bien l'attribut fx:id=\"graphPane\" dans le fichier FXML.");
+            return;
+        }
+        System.out.println("1. Le conteneur 'graphPane' est correctement lié. OK.");
 
-        // 4. Créer et intégrer l'afficheur JavaFX de GraphStream
-        Viewer viewer = new FxViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
-        viewer.enableAutoLayout();
+        // ----- VÉRIFICATION 2 : Le graphe d'appel contient-il des données ? -----
+        System.out.println("2. Le graphe d'appel contient " + callGraph.getGraph().size() + " méthodes appelantes.");
+        if (callGraph.getGraph().isEmpty()) {
+            System.out.println("   Le graphe est vide. Rien à afficher.");
+            graphPane.getChildren().clear();
+            graphPane.getChildren().add(new Label("Aucune relation d'appel n'a été trouvée."));
+            return;
+        }
 
+        try {
+            // 0. Configuration essentielle pour le rendu JavaFX de GraphStream
+            System.setProperty("org.graphstream.ui", "javafx"); // Updated property for JavaFX rendering
 
-        Platform.runLater(() -> {
-            View viewPanel;
-            try {
-                viewPanel = viewer.addView(FxViewer.DEFAULT_VIEW_ID, new org.graphstream.ui.javafx.FxGraphRenderer());
-            } catch (Exception e) {
-                System.err.println("Erreur lors de l'ajout de la vue GraphStream : " + e.getMessage());
+            // 1. Nettoyer le conteneur et vérifier si le graphe est vide
+            graphPane.getChildren().clear();
+            if (callGraph.getGraph().isEmpty()) {
+                graphPane.getChildren().add(new Label("Aucune relation d'appel trouvée."));
                 return;
             }
 
-            javafx.scene.layout.Region viewRegion = (javafx.scene.layout.Region) viewPanel;
-            viewRegion.setManaged(true);
-            viewRegion.prefWidthProperty().bind(graphPane.widthProperty());
-            viewRegion.prefHeightProperty().bind(graphPane.heightProperty());
+            // 2. Créer l'objet GraphStream
+            Graph graph = new SingleGraph("CallGraph");
+            graph.setAttribute("ui.stylesheet", "node { fill-color: #ADD8E6; text-size: 10; } edge { arrow-shape: arrow; }");
 
-            graphPane.getChildren().add((javafx.scene.Node) viewPanel);
+            // 3. Remplir le graphe avec les données
+            for (Map.Entry<String, Set<String>> entry : callGraph.getGraph().entrySet()) {
+                String caller = entry.getKey();
+                String callerId = caller.replaceAll("[^a-zA-Z0-9_]", "_");
+                if (graph.getNode(callerId) == null) {
+                    graph.addNode(callerId).setAttribute("ui.label", caller.substring(caller.lastIndexOf('.') + 1));
+                }
+                for (String callee : entry.getValue()) {
+                    String calleeId = callee.replaceAll("[^a-zA-Z0-9_]", "_");
+                    if (graph.getNode(calleeId) == null) {
+                        graph.addNode(calleeId).setAttribute("ui.label", callee.substring(callee.lastIndexOf('.') + 1));
+                    }
+                    String edgeId = callerId + "_to_" + calleeId;
+                    if (graph.getEdge(edgeId) == null) {
+                        graph.addEdge(edgeId, callerId, calleeId, true);
+                    }
+                }
+            }
 
-            // ***************************************************************
-            // SOLUTION D'AFFICHAGE : Forcer la vue à se dessiner
-            // ***************************************************************
+            // 4. Créer et intégrer l'afficheur JavaFX
+            Viewer viewer = new FxViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
+            viewer.enableAutoLayout();
 
-            viewer.disableAutoLayout(); // Désactiver temporairement
-            viewer.enableAutoLayout(); // Réactiver (souvent suffisant pour forcer le dessin initial)
-        });
+            // Use addDefaultView to create a JavaFX-compatible view
+            FxViewPanel viewPanel = (FxViewPanel) viewer.addDefaultView(false); // false to avoid opening a new window
+
+            // Lier la taille du panneau à celle du conteneur
+            viewPanel.prefWidthProperty().bind(graphPane.widthProperty());
+            viewPanel.prefHeightProperty().bind(graphPane.heightProperty());
+
+            // Ajouter le panneau à la scène JavaFX
+            graphPane.getChildren().add(viewPanel);
+
+        } catch (Exception e) {
+            System.err.println("ERREUR INATTENDUE pendant la création du graphe visuel :");
+            e.printStackTrace(); // Affiche l'erreur complète dans la console
+        }
     }
-
 }
