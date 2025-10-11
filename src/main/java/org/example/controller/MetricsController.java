@@ -1,7 +1,7 @@
 package org.example.controller;
 
 // MetricsController.java (Le Cerveau de l'interface)
-import org.example.analysis.SourceCodeAnalyzer; // Assurez-vous d'avoir le bon package
+import org.example.analysis.SourceCodeAnalyzer;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -43,8 +43,8 @@ import org.graphstream.ui.fx_viewer.FxViewPanel;
 // Si vous aviez import org.graphstream.ui.javafx.FxGraphRenderer; il faut le supprimer.
 
 
-import org.example.model.CallGraph; // <-- NOUVEL IMPORT
-import org.example.analysis.MethodCallVisitor; // <-- NOUVEL IMPORT
+import org.example.model.CallGraph;
+import org.example.analysis.MethodCallVisitor;
 import org.graphstream.ui.view.Viewer;
 
 
@@ -192,7 +192,7 @@ public class MetricsController {
 
 
         // Pour TCC dans ce tableau, on réutilise la définition tccCol mais en créant une nouvelle instance
-        // pour éviter les problèmes si le FXML gère mal la réutilisation d'une colonne (bonne pratique)
+
         TableColumn<ClassMetric, Double> interTccCol = new TableColumn<>("TCC");
         interTccCol.setCellValueFactory(new PropertyValueFactory<>("tcc"));
         interTccCol.setPrefWidth(80);
@@ -200,9 +200,9 @@ public class MetricsController {
 
         // Déclarez une nouvelle colonne ATFD (Integer)
         TableColumn<ClassMetric, Integer> interAtfdCol = new TableColumn<>("ATFD");
-        // CORRECTION ICI : Utilisez la variable interAtfdCol !
-        interAtfdCol.setCellValueFactory(new PropertyValueFactory<>("atfd")); // <-- CORRIGÉ
-        interAtfdCol.setPrefWidth(80); // <-- CORRIGÉ
+
+        interAtfdCol.setCellValueFactory(new PropertyValueFactory<>("atfd"));
+        interAtfdCol.setPrefWidth(80);
 
         intersectingClassesTable.getColumns().clear();
         // AJOUT DE TCC ici
@@ -261,10 +261,7 @@ public class MetricsController {
     }
 
 
-    /**
-     * Gère l'action du bouton "Filtrer" (associé à onAction="#handleFilterByX").
-     * C'est la méthode qui manquait et qui causait l'erreur.
-     */
+
     // Dans MetricsController.java
 
     /**

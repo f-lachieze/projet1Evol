@@ -27,10 +27,7 @@ public class ClassMetric {
     // Contient les métriques détaillées de chaque méthode
     private final List<MethodMetric> methodMetrics = new ArrayList<>();
 
-    /**
-     * CONSTRUCTEUR CORRIGÉ pour correspondre à l'appel dans MetricsCollector.
-     * Le MetricsCollector fournit le nom qualifié complet ou le nom simple.
-     */
+
     public ClassMetric(String fullName, String packageName) {
         this.fullName = fullName;
         this.packageName = packageName;

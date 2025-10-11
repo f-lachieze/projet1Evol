@@ -190,7 +190,4 @@ public class MetricsCollector {
             }
         }
     }
-
-    // CORRECTION : La classe ClassVisitor et la méthode calculateClassLoC ont été supprimées
-    // car elles étaient redondantes ou inutilisées.
 }

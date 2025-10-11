@@ -83,7 +83,7 @@ public class SourceCodeAnalyzer {
 
     // --- Exemple d'utilisation dans la méthode main ---
     public static void main(String[] args) {
-        // REMPLACEZ PAR LE CHEMIN DE VOTRE APPLICATION SOURCE
+
         String appPath = "/chemin/vers/votre/application/source";
 
         // Assurez-vous d'avoir un répertoire de test si vous ne fournissez pas d'argument
@@ -99,7 +99,7 @@ public class SourceCodeAnalyzer {
 
         if (success) {
             System.out.println("\nL'analyse statique peut commencer en utilisant ces ASTs :");
-            // Maintenant, vous pouvez passer cette liste à la prochaine étape (le Collecteur de Métriques)
+
             // for (CompilationUnit cu : analyzer.getCompilationUnits()) {
             //     System.out.println(cu.getPrimaryType().map(t -> t.getNameAsString()).orElse("Sans Type Primaire"));
             // }
