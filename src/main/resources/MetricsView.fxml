@@ -80,7 +80,16 @@
 
             <Tab text="Graphe de Couplage">
                 <content>
-                    <AnchorPane fx:id="couplingGraphPane" />
+                    <VBox spacing="5.0" style="-fx-padding: 5;">
+                        <children>
+                            <HBox alignment="CENTER_LEFT" spacing="10.0">
+                                <Label text="Seuil de couplage :" />
+                                <Slider fx:id="couplingSlider" max="1.0" min="0.0" showTickLabels="true" showTickMarks="true" majorTickUnit="0.1" blockIncrement="0.01" />
+                                <Label fx:id="couplingThresholdLabel" text="0.00" />
+                            </HBox>
+                            <AnchorPane fx:id="couplingGraphPane" VBox.vgrow="ALWAYS" />
+                        </children>
+                    </VBox>
                 </content>
             </Tab>
 

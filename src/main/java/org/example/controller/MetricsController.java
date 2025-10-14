@@ -17,12 +17,7 @@ import org.example.model.ClassMetric;
 import com.github.javaparser.ast.CompilationUnit;
 
 // Dans MetricsController.java (Section Imports)
-import java.util.ArrayList;
-import java.util.Collections; // Ajouté pour Collections
-import java.util.Comparator; // Ajouté pour Comparator
-import java.util.List;
-import java.util.Map;
-import java.util.Set; // Ajouté pour Set
+import java.util.*;
 import java.util.stream.Collectors; // Ajouté pour Collectors
 import java.io.File;
 // ...
@@ -34,7 +29,9 @@ import javafx.scene.layout.AnchorPane;
 import org.example.model.MethodMetric;
 
 // Imports GraphStream
+import org.graphstream.graph.Edge;
 import org.graphstream.graph.Graph;
+import org.graphstream.graph.Node;
 import org.graphstream.graph.implementations.SingleGraph;
 import org.graphstream.ui.fx_viewer.FxDefaultView;
 import org.graphstream.ui.fx_viewer.FxViewer;
@@ -48,8 +45,15 @@ import org.example.model.ClassCouplingGraph;
 
 import org.example.model.CallGraph;
 import org.example.analysis.MethodCallVisitor;
-import org.graphstream.ui.view.View;
+
+
 import org.graphstream.ui.view.Viewer;
+import org.graphstream.ui.fx_viewer.FxViewPanel;
+import javafx.scene.control.Label;
+import javafx.scene.control.Alert;
+import java.util.Map;
+
+
 
 
 public class MetricsController {
@@ -94,6 +98,10 @@ public class MetricsController {
     @FXML
     private AnchorPane couplingGraphPane; // Le nouveau conteneur
 
+    @FXML private Slider couplingSlider; // Nouveau
+    @FXML private Label couplingThresholdLabel; // Nouveau
+
+    private ClassCouplingGraph currentCouplingGraph;
     private final CouplingCalculator couplingCalculator = new CouplingCalculator(); // Le calculateur
 
 
@@ -248,6 +256,19 @@ public class MetricsController {
         filteredClassesTable.getColumns().clear();
         // AJOUT DE TCC ici
         filteredClassesTable.getColumns().addAll(filterClassNameCol, filterNbMethodsCol, filterWmcCol, filterTccCol, filterAtfdCol);
+
+        // Dans MetricsController.java, à la fin de la méthode initialize()
+
+// --- Initialisation du Slider de couplage ---
+        couplingSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            double threshold = newVal.doubleValue();
+            couplingThresholdLabel.setText(String.format("%.2f", threshold));
+            // Si un graphe a déjà été calculé, on le redessine avec le nouveau seuil
+            if (currentCouplingGraph != null) {
+                displayCouplingGraph(currentCouplingGraph);
+            }
+        });
+
     }
 
 
@@ -577,7 +598,12 @@ public class MetricsController {
             }
 
             ClassCouplingGraph couplingGraph = couplingCalculator.calculate(callGraph);
-            displayCouplingGraph(couplingGraph);
+
+
+            // NOUVEAU : Calculer et stocker le graphe de couplage
+            currentCouplingGraph = couplingCalculator.calculate(callGraph);
+            // Afficher le graphe initialement avec un seuil de 0
+            displayCouplingGraph(currentCouplingGraph);
 
             // 4. Afficher le message de succès final
             showAlert("Succès", "Analyse statique terminée ! " + currentMetrics.size() + " classes analysées.", Alert.AlertType.INFORMATION);
@@ -686,9 +712,8 @@ public class MetricsController {
         }
     }
 
-    // Dans MetricsController.java
 
-    // In MetricsController.java
+    // Dans MetricsController.java
 
     // Dans MetricsController.java
 
@@ -696,7 +721,7 @@ public class MetricsController {
 
     private void displayCouplingGraph(ClassCouplingGraph couplingGraph) {
         // 0. Configurer le moteur de rendu JavaFX
-        System.setProperty("org.graphstream.ui", "javafx"); // Propriété correcte pour JavaFX
+        System.setProperty("org.graphstream.ui.renderer", "org.graphstream.ui.fx_viewer.FxViewer");
         couplingGraphPane.getChildren().clear();
 
         if (couplingGraph.getGraph().isEmpty()) {
@@ -707,7 +732,7 @@ public class MetricsController {
         // 2. Créer le graphe GraphStream
         Graph graph = new SingleGraph("CouplingGraph");
         graph.setAttribute("ui.stylesheet", "node { size: 15px; fill-color: #F7D794; text-size: 12; } " +
-                "edge { text-size: 10; fill-color: #777; }");
+                "edge { text-size: 10; fill-color: #777; arrow-shape: arrow; }");
 
         // 3. Remplir le graphe (votre logique est correcte)
         for (Map.Entry<String, Map<String, Double>> entry : couplingGraph.getGraph().entrySet()) {
@@ -733,8 +758,9 @@ public class MetricsController {
         Viewer viewer = new FxViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
         viewer.enableAutoLayout();
 
-        // 5. Créer la vue par défaut et obtenir le panneau JavaFX
-        FxViewPanel viewPanel = (FxViewPanel) viewer.addDefaultView(false); // false pour intégrer dans l'interface existante
+        // 5. Obtenir le panneau d'affichage (LA CORRECTION FINALE EST ICI)
+        // On caste directement le résultat de viewer.addView en FxViewPanel.
+        FxViewPanel viewPanel = (FxViewPanel) viewer.addDefaultView(false);
 
         // 6. Lier la taille et ajouter le panneau à l'interface
         viewPanel.prefWidthProperty().bind(couplingGraphPane.widthProperty());
