@@ -86,6 +86,8 @@
                                 <Label text="Seuil de couplage :" />
                                 <Slider fx:id="couplingSlider" max="1.0" min="0.0" showTickLabels="true" showTickMarks="true" majorTickUnit="0.1" blockIncrement="0.01" />
                                 <Label fx:id="couplingThresholdLabel" text="0.00" />
+                                <Button fx:id="zoomOutButton" text="-" onAction="#handleZoomOut" style="-fx-font-weight: bold;"/>
+                                <Button fx:id="zoomInButton" text="+" onAction="#handleZoomIn" style="-fx-font-weight: bold;"/>
                             </HBox>
                             <AnchorPane fx:id="couplingGraphPane" VBox.vgrow="ALWAYS" />
                         </children>

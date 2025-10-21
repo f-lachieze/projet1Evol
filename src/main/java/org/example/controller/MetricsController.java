@@ -47,6 +47,8 @@ import org.example.model.CallGraph;
 import org.example.analysis.MethodCallVisitor;
 
 
+import org.graphstream.ui.javafx.FxGraphRenderer;
+import org.graphstream.ui.view.View;
 import org.graphstream.ui.view.Viewer;
 import org.graphstream.ui.fx_viewer.FxViewPanel;
 import javafx.scene.control.Label;
@@ -100,6 +102,34 @@ public class MetricsController {
 
     @FXML private Slider couplingSlider; // Nouveau
     @FXML private Label couplingThresholdLabel; // Nouveau
+    @FXML private Button zoomInButton; // Nouveau
+    @FXML private Button zoomOutButton; // Nouveau
+
+    private View graphStreamView;
+
+    // Dans MetricsController.java
+
+    @FXML
+    private void handleZoomIn(ActionEvent event) {
+        if (graphStreamView != null) {
+            // La méthodegetCamera() retourne l'objet qui contrôle la vue
+            // setViewPercent() ajuste le zoom (valeur < 1.0 = zoom avant)
+            graphStreamView.getCamera().setViewPercent(
+                    Math.max(0.1, graphStreamView.getCamera().getViewPercent() * 0.8) // Zoom in (80% of current view)
+            );
+        }
+    }
+
+    @FXML
+    private void handleZoomOut(ActionEvent event) {
+        if (graphStreamView != null) {
+            // Valeur > 1.0 = zoom arrière
+            graphStreamView.getCamera().setViewPercent(
+                    Math.min(1.0, graphStreamView.getCamera().getViewPercent() * 1.2) // Zoom out (120% of current view)
+            );
+        }
+    }
+
 
     private ClassCouplingGraph currentCouplingGraph;
     private final CouplingCalculator couplingCalculator = new CouplingCalculator(); // Le calculateur
@@ -715,26 +745,23 @@ public class MetricsController {
 
     // Dans MetricsController.java
 
-    // Dans MetricsController.java
-
-    // Dans MetricsController.java
 
     private void displayCouplingGraph(ClassCouplingGraph couplingGraph) {
         // 0. Configurer le moteur de rendu JavaFX
         System.setProperty("org.graphstream.ui.renderer", "org.graphstream.ui.fx_viewer.FxViewer");
         couplingGraphPane.getChildren().clear();
 
-        if (couplingGraph.getGraph().isEmpty()) {
-            couplingGraphPane.getChildren().add(new Label("Aucun couplage inter-classe trouvé."));
+        if (couplingGraph == null || couplingGraph.getGraph().isEmpty()) {
+            couplingGraphPane.getChildren().add(new Label("Aucun couplage inter-classe à afficher."));
             return;
         }
 
-        // 2. Créer le graphe GraphStream
+        // 1. Créer le graphe GraphStream
         Graph graph = new SingleGraph("CouplingGraph");
         graph.setAttribute("ui.stylesheet", "node { size: 15px; fill-color: #F7D794; text-size: 12; } " +
                 "edge { text-size: 10; fill-color: #777; arrow-shape: arrow; }");
 
-        // 3. Remplir le graphe (votre logique est correcte)
+        // 2. Remplir le graphe (votre logique est correcte)
         for (Map.Entry<String, Map<String, Double>> entry : couplingGraph.getGraph().entrySet()) {
             String sourceClass = entry.getKey();
             if (graph.getNode(sourceClass) == null) {
@@ -754,17 +781,26 @@ public class MetricsController {
             }
         }
 
-        // 4. Créer le visualiseur
+        // 3. Créer le visualiseur (Viewer)
         Viewer viewer = new FxViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
         viewer.enableAutoLayout();
 
-        // 5. Obtenir le panneau d'affichage (LA CORRECTION FINALE EST ICI)
-        // On caste directement le résultat de viewer.addView en FxViewPanel.
-        FxViewPanel viewPanel = (FxViewPanel) viewer.addDefaultView(false);
+        // 4. Obtenir le panneau d'affichage (LA CORRECTION FINALE EST ICI)
+        // On utilise addDefaultView avec 'false' et un nouveau FxGraphRenderer, comme vu dans le code source
+        View view = viewer.addDefaultView(false);
 
-        // 6. Lier la taille et ajouter le panneau à l'interface
+        this.graphStreamView= view;
+
+        // Le cast direct vers FxViewPanel est la clé
+        FxViewPanel viewPanel = (FxViewPanel) view;
+
+
+        // 5. Lier la taille et ajouter le panneau à l'interface
         viewPanel.prefWidthProperty().bind(couplingGraphPane.widthProperty());
         viewPanel.prefHeightProperty().bind(couplingGraphPane.heightProperty());
         couplingGraphPane.getChildren().add(viewPanel);
     }
 }
+
+
+//        FxViewPanel viewPanel = (FxViewPanel) viewer.addDefaultView(false);
