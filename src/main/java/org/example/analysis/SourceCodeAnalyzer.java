@@ -2,6 +2,7 @@ package org.example.analysis;
 
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
+import org.example.model.CallGraph;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -104,5 +105,41 @@ public class SourceCodeAnalyzer {
             //     System.out.println(cu.getPrimaryType().map(t -> t.getNameAsString()).orElse("Sans Type Primaire"));
             // }
         }
+
+
+    }
+
+    public CallGraph generateCallGraph(String sourceDirPath) {
+
+        // --- ÉTAPE 1 : PARSING (ce que vous avez déjà) ---
+        // 'analyze' va remplir la liste 'this.compilationUnits'
+        this.compilationUnits.clear(); // Vider les anciens résultats
+        boolean parsingSuccess = this.analyze(sourceDirPath);
+
+        // Créez le graphe qui servira de collecteur
+        CallGraph callGraph = new CallGraph();
+
+        if (!parsingSuccess) {
+            System.err.println("Le parsing a échoué, retour d'un graphe vide.");
+            return callGraph; // Retourne un graphe vide
+        }
+
+        // --- ÉTAPE 2 : VISITE (ce qu'il manquait) ---
+        System.out.println("Début de la visite des ASTs pour le graphe d'appel...");
+
+        // Créez le visiteur
+        MethodCallVisitor visitor = new MethodCallVisitor();
+
+        // Visitez chaque fichier parsé
+        for (CompilationUnit cu : this.compilationUnits) {
+            // Le visiteur va ajouter les appels trouvés (caller/callee)
+            // directement dans l'objet 'callGraph'
+            visitor.visit(cu, callGraph);
+        }
+
+        System.out.println("Visite des ASTs terminée.");
+
+        // Retournez le graphe complété
+        return callGraph;
     }
 }

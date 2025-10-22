@@ -95,6 +95,32 @@
                 </content>
             </Tab>
 
+            <Tab text="Matrice d'Adjacence">
+                <content>
+                    <AnchorPane fx:id="matrixPane" />
+                </content>
+            </Tab>
+
+            <Tab text="Explorateur d'Appels">
+                <content>
+                    <BorderPane fx:id="detailedGraphLayoutPane">
+
+                        <left>
+                            <TreeView fx:id="classTreeView" prefWidth="250.0"/>
+                        </left>
+
+                        <center>
+                            <AnchorPane fx:id="detailedGraphPane" />
+                        </center>
+
+                    </BorderPane>
+                </content>
+            </Tab>
+
+
+
         </TabPane>
+
+
     </center>
 </BorderPane>

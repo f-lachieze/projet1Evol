@@ -1,7 +1,40 @@
 package org.example.controller;
 
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+
+// Imports JavaFX nécessaires (à ajouter en haut de votre fichier)
+import javafx.geometry.Insets;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.control.TreeItem;
+
+// IMPORTS JAVA UTILES
+import java.awt.*;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.example.model.CallGraph; // Assurez-vous que l'import est correct
+
+
+
+
 // MetricsController.java (Le Cerveau de l'interface)
-import javafx.scene.Group;
+import javafx.scene.layout.Pane;
 import org.example.analysis.SourceCodeAnalyzer;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -24,16 +57,12 @@ import java.io.File;
 
 import javafx.collections.FXCollections;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.layout.AnchorPane;
 
 import org.example.model.MethodMetric;
 
 // Imports GraphStream
-import org.graphstream.graph.Edge;
 import org.graphstream.graph.Graph;
-import org.graphstream.graph.Node;
 import org.graphstream.graph.implementations.SingleGraph;
-import org.graphstream.ui.fx_viewer.FxDefaultView;
 import org.graphstream.ui.fx_viewer.FxViewer;
 import org.graphstream.ui.fx_viewer.FxViewPanel;
 // Dans la section des imports de MetricsController.java
@@ -43,19 +72,12 @@ import org.example.analysis.CouplingCalculator;
 import org.example.model.ClassCouplingGraph;
 
 
-import org.example.model.CallGraph;
 import org.example.analysis.MethodCallVisitor;
 
 
-import org.graphstream.ui.javafx.FxGraphRenderer;
 import org.graphstream.ui.view.View;
 import org.graphstream.ui.view.Viewer;
-import org.graphstream.ui.fx_viewer.FxViewPanel;
-import javafx.scene.control.Label;
 import javafx.scene.control.Alert;
-import java.util.Map;
-
-
 
 
 public class MetricsController {
@@ -97,6 +119,16 @@ public class MetricsController {
     @FXML
     private AnchorPane graphPane;
 
+    // NOUVEAUX CHAMPS À AJOUTER POUR L'ONGLET HYBRIDE
+    @FXML
+    private BorderPane detailedGraphLayoutPane; // Le conteneur BorderPane
+
+    @FXML
+    private TreeView<String> classTreeView; // L'arborescence à gauche
+
+    @FXML
+    private AnchorPane detailedGraphPane; // Le panneau d'affichage à droite
+
     @FXML
     private AnchorPane couplingGraphPane; // Le nouveau conteneur
 
@@ -104,6 +136,16 @@ public class MetricsController {
     @FXML private Label couplingThresholdLabel; // Nouveau
     @FXML private Button zoomInButton; // Nouveau
     @FXML private Button zoomOutButton; // Nouveau
+
+    // Lier le bouton de l'interface
+    @FXML
+    private Button genererGrapheBouton;
+
+    // 1. AJOUTER CE NOUVEAU CHAMP FXML
+    @FXML
+    private AnchorPane matrixPane; // Panneau pour l'onglet 2
+
+
 
     private View graphStreamView;
 
@@ -299,6 +341,215 @@ public class MetricsController {
             }
         });
 
+
+        // NOUVEAU : Gérer le clic sur l'arborescence
+        if (classTreeView != null) {
+            classTreeView.getSelectionModel().selectedItemProperty().addListener(
+                    (observable, oldValue, newValue) -> {
+                        // Appeler notre nouvelle méthode de filtrage quand un item est cliqué
+                        handleClassSelection(newValue);
+                    }
+            );
+        }
+
+    }
+
+    /**
+     * Appelé lorsqu'un utilisateur clique sur un élément de l'arborescence.
+     */
+    // Dans MetricsController.java
+
+    /**
+     * Appelé lorsqu'un utilisateur clique sur un élément de l'arborescence.
+     */
+    private void handleClassSelection(TreeItem<String> selectedItem) {
+        // 1. S'assurer que l'analyse est faite et qu'on clique bien sur une CLASSE
+        if (selectedItem == null ||
+                !selectedItem.isLeaf() || // Si ce n'est pas une feuille (c'est un package)
+                selectedItem.getParent() == null || // Si c'est la racine
+                selectedItem.getParent().getParent() == null || // Si son parent est la racine (c'est un package)
+                this.callGraph == null) {
+
+            detailedGraphPane.getChildren().clear(); // Vider le panneau
+            return;
+        }
+
+        // --- C'est bien une classe, on reconstruit le nom ---
+
+        // 2. Obtenir les noms
+        String className = selectedItem.getValue(); // ex: "ClassA"
+        String packageName = selectedItem.getParent().getValue(); // ex: "com.app" ou "(Default Package)"
+
+        // 3. Reconstruire le nom complet
+        String fullClassName;
+        if (packageName.equals("(Default Package)")) {
+            fullClassName = className; // Pas de préfixe de package
+        } else {
+            fullClassName = packageName + "." + className; // ex: "com.app.ClassA"
+        }
+
+        System.out.println("Génération du graphe détaillé pour : " + fullClassName);
+
+        // 4. Filtrer le graphe principal
+        CallGraph filteredGraph = filterGraphForClass(fullClassName, this.callGraph);
+
+        // 5. Afficher ce nouveau graphe
+        displayDetailedGraph(filteredGraph);
+    }
+
+    /**
+     * Crée un nouveau CallGraph contenant uniquement les appels
+     * entrants et sortants de la classe sélectionnée.
+     */
+    private CallGraph filterGraphForClass(String className, CallGraph fullGraph) {
+        CallGraph filtered = new CallGraph();
+
+        for (Map.Entry<String, Set<String>> entry : fullGraph.getGraph().entrySet()) {
+            String caller = entry.getKey();
+
+            // 1. Appels SORTANTS (Le caller EST la classe sélectionnée)
+            if (caller.startsWith(className)) {
+                for (String callee : entry.getValue()) {
+                    filtered.addCall(caller, callee);
+                }
+            }
+            // 2. Appels ENTRANTS (Le caller N'EST PAS la classe, mais un callee l'est)
+            else {
+                for (String callee : entry.getValue()) {
+                    if (callee.startsWith(className)) {
+                        filtered.addCall(caller, callee);
+                    }
+                }
+            }
+        }
+        return filtered;
+    }
+
+// Imports nécessaires (à vérifier en haut du fichier)
+
+    /**
+     * Traduit l'objet CallGraph en un String au format DOT pour Graphviz.
+     */
+    private String generateDotString(CallGraph callGraph) {
+        StringBuilder dot = new StringBuilder();
+
+        // 1. Début du graphe
+        dot.append("digraph CallGraph {\n");
+
+        // 2. Réglages globaux (pour un look "carré" et de haut en bas)
+        dot.append("  rankdir=TB;\n"); // TB = Top-to-Bottom
+        dot.append("  node [shape=box, fontname=\"Arial\", style=filled, fillcolor=\"#ADD8E6\"];\n");
+        dot.append("  edge [arrowhead=normal];\n");
+        dot.append("\n");
+
+        // 3. Parcourir les données et créer les lignes de la recette
+        for (Map.Entry<String, Set<String>> entry : callGraph.getGraph().entrySet()) {
+
+            // Nettoyer le nom du Caller (enlève les parenthèses)
+            String caller = entry.getKey().replaceAll("\\(.*\\)", "");
+
+            for (String callee : entry.getValue()) {
+                // Nettoyer le nom du Callee
+                String calleeClean = callee.replaceAll("\\(.*\\)", "");
+
+                // Écrire la relation : "Caller" -> "Callee";
+                dot.append(String.format("  \"%s\" -> \"%s\";\n", caller, calleeClean));
+            }
+        }
+
+        // 4. Fin du graphe
+        dot.append("}\n");
+
+        return dot.toString();
+    }
+
+
+    // Imports nécessaires (à vérifier en haut du fichier)
+
+    /**
+     * Prend le String DOT, le sauvegarde en fichier, et exécute Graphviz
+     * pour générer une image.
+     */
+    private File generateGraphImage(String dotString) throws IOException, InterruptedException {
+
+        // 1. Sauvegarder le String dans un fichier temporaire "graph.dot"
+        // (Ce fichier sera créé à la racine de votre projet)
+        File dotFile = new File("graph.dot");
+        try (FileWriter writer = new FileWriter(dotFile)) {
+            writer.write(dotString);
+        }
+
+        File pngFile = new File("graph.png");
+
+        // 2. Préparer la commande à exécuter (dot -Tpng graph.dot -o graph.png)
+        ProcessBuilder pb = new ProcessBuilder(
+                "dot",        // La commande (Graphviz doit être dans le PATH)
+                "-Tpng",      // Format de sortie PNG
+                dotFile.getAbsolutePath(), // Fichier d'entrée
+                "-o",         // Fichier de sortie
+                pngFile.getAbsolutePath()  // Nom du fichier de sortie
+        );
+
+        // 3. Lancer la commande et attendre qu'elle finisse
+        System.out.println("Lancement de la commande Graphviz pour le graphe détaillé...");
+        Process process = pb.start();
+        int exitCode = process.waitFor(); // Attend la fin
+
+        if (exitCode == 0) {
+            System.out.println("Image graph.png générée avec succès.");
+            return pngFile;
+        } else {
+            System.err.println("Erreur durant la génération Graphviz. Code de sortie : " + exitCode);
+            // Lire l'erreur pour le débogage
+            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getErrorStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.err.println(line);
+                }
+            }
+            return null;
+        }
+    }
+    /**
+     * Affiche un CallGraph dans le panneau "detailedGraphPane".
+     * C'est une copie de votre logique Graphviz, mais qui cible un autre panneau.
+     */
+    private void displayDetailedGraph(CallGraph callGraph) {
+        // Vise le bon panneau
+        if (detailedGraphPane == null) return;
+        detailedGraphPane.getChildren().clear();
+
+        if (callGraph == null || callGraph.getGraph().isEmpty()) {
+            detailedGraphPane.getChildren().add(new Label("Aucun appel trouvé pour cette classe."));
+            return;
+        }
+
+        try {
+            // 1. Générer le texte DOT (réutilise la méthode helper existante)
+            String dotDefinition = generateDotString(callGraph);
+
+            // 2. Exécuter Graphviz (réutilise la méthode helper existante)
+            // Note: On peut écraser le fichier "graph.png", ou utiliser un nom unique
+            File imageFile = generateGraphImage(dotDefinition);
+
+            if (imageFile != null && imageFile.exists()) {
+                // 3. Charger et afficher l'image
+                Image image = new Image(new FileInputStream(imageFile)); // FileInputStream évite le cache
+                ImageView imageView = new ImageView(image);
+                imageView.setPreserveRatio(true);
+
+                ScrollPane scrollPane = new ScrollPane(imageView);
+                scrollPane.setFitToWidth(true);
+                scrollPane.setFitToHeight(true);
+                scrollPane.prefWidthProperty().bind(detailedGraphPane.widthProperty());
+                scrollPane.prefHeightProperty().bind(detailedGraphPane.heightProperty());
+
+                detailedGraphPane.getChildren().add(scrollPane);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            detailedGraphPane.getChildren().add(new Label("Erreur de génération du graphe."));
+        }
     }
 
 
@@ -627,6 +878,16 @@ public class MetricsController {
                 displayCallGraph(callGraph);
             }
 
+            // AJOUTEZ CETTE LIGNE JUSTE ICI :
+            if (matrixPane != null) {
+                displayAdjacencyMatrix(callGraph);
+            }
+
+            if (classTreeView != null) {
+                // currentMetrics est déjà disponible ici
+                populateClassTree(currentMetrics);
+            }
+
             ClassCouplingGraph couplingGraph = couplingCalculator.calculate(callGraph);
 
 
@@ -662,83 +923,125 @@ public class MetricsController {
 
 
     // Dans MetricsController.java
+    // Dans MetricsController.java
+
+
+
     private void displayCallGraph(CallGraph callGraph) {
         System.out.println("--- DÉBUT DU DÉBOGAGE : displayCallGraph ---");
 
-        // VÉRIFICATION DE SÉCURITÉ : Ne pas afficher un graphe trop grand
-        if (callGraph.getGraph().size() > 500) { // Limite de 500 nœuds, ajustez si besoin
-            System.out.println("Graphe d'appel trop grand (" + callGraph.getGraph().size() + " nœuds) pour être affiché.");
-            graphPane.getChildren().add(new Label("Le graphe d'appel est trop grand pour être affiché visuellement."));
-            return;
-        }
-
-        // ----- VÉRIFICATION 1 : Le conteneur FXML est-il bien lié ? -----
+        // VÉRIFICATION DE SÉCURITÉ : Limite de taille et vérification FXML
         if (graphPane == null) {
-            System.err.println("ERREUR CRITIQUE : La variable 'graphPane' est null. Vérifiez que votre AnchorPane a bien l'attribut fx:id=\"graphPane\" dans le fichier FXML.");
-            return;
+            System.err.println("ERREUR CRITIQUE : graphPane est null."); return;
         }
-        System.out.println("1. Le conteneur 'graphPane' est correctement lié. OK.");
+        graphPane.getChildren().clear();
 
-        // ----- VÉRIFICATION 2 : Le graphe d'appel contient-il des données ? -----
-        System.out.println("2. Le graphe d'appel contient " + callGraph.getGraph().size() + " méthodes appelantes.");
-        if (callGraph.getGraph().isEmpty()) {
-            System.out.println("   Le graphe est vide. Rien à afficher.");
-            graphPane.getChildren().clear();
-            graphPane.getChildren().add(new Label("Aucune relation d'appel n'a été trouvée."));
+        if (callGraph == null || callGraph.getGraph().isEmpty()) {
+            System.out.println("2. Graphe d'appel vide.");
+            graphPane.getChildren().add(new Label("Aucune relation d'appel trouvée."));
             return;
         }
+
+        // Si le graphe est trop grand (la vérification est faite ici pour la propreté)
+        if (callGraph.getGraph().size() > 500) {
+            System.out.println("Graphe d'appel trop grand (>500). Non affiché.");
+            graphPane.getChildren().add(new Label("Graphe d'appel trop grand (>500 nœuds) pour affichage."));
+            return;
+        }
+
+        System.out.println("2. Graphe d'appel contient " + callGraph.getGraph().size() + " appelants.");
 
         try {
-            // 0. Configuration essentielle pour le rendu JavaFX de GraphStream
-            System.setProperty("org.graphstream.ui", "javafx"); // Updated property for JavaFX rendering
-
-            // 1. Nettoyer le conteneur et vérifier si le graphe est vide
-            graphPane.getChildren().clear();
-            if (callGraph.getGraph().isEmpty()) {
-                graphPane.getChildren().add(new Label("Aucune relation d'appel trouvée."));
-                return;
-            }
+            // 1. Configurer le moteur de rendu CORRECT (Utilisé par FxViewer)
+            System.setProperty("org.graphstream.ui.renderer", "org.graphstream.ui.fx_viewer.FxViewer");
 
             // 2. Créer l'objet GraphStream
             Graph graph = new SingleGraph("CallGraph");
-            graph.setAttribute("ui.stylesheet", "node { fill-color: #ADD8E6; text-size: 10; } edge { arrow-shape: arrow; }");
+            // Style : les étiquettes des nœuds doivent être visibles
+            String styleSheet =
+                    "node {" +
+                            "   shape: box; " +          // Change la forme en boîte (carré/rectangle)
+                            "   fill-color: #A9D0F5; " +
+                            "   stroke-mode: plain; " +  // Bordure simple
+                            "   stroke-color: #333; " +
+                            "   size-mode: fit; " +      // La taille s'adapte au texte (très important)
+                            "   padding: 10px, 5px; " +  // Espace à l'intérieur de la boîte
+                            "   text-size: 12; " +
+                            "   text-visibility-mode: normal; " +
+                            "}" +
+                            "edge {" +
+                            "   arrow-shape: arrow; " +
+                            "   shape: line; " +         // Lignes droites
+                            "   fill-color: #555; " +
+                            "}" +
+                            "node:selected {" +         // Ce qui se passe si on clique
+                            "   fill-color: #F4D03F; " +
+                            "}";
 
-            // 3. Remplir le graphe avec les données
+            graph.setAttribute("ui.stylesheet", styleSheet);
+
+            // Dans MetricsController.java, méthode displayCallGraph
+
+// ... (code pour créer le graphe GraphStream) ...
+
+// 3. Remplir le graphe avec les données (Correction ROBUSTE de l'étiquette des nœuds)
             for (Map.Entry<String, Set<String>> entry : callGraph.getGraph().entrySet()) {
-                String caller = entry.getKey();
+                String caller = entry.getKey(); // Ex: "com.app.ClassA.methodA1(...)"
                 String callerId = caller.replaceAll("[^a-zA-Z0-9_]", "_");
+
+                // Correction pour l'étiquette du nœud (Caller)
                 if (graph.getNode(callerId) == null) {
-                    graph.addNode(callerId).setAttribute("ui.label", caller.substring(caller.lastIndexOf('.') + 1));
+                    // Prend la partie après le dernier '.'
+                    String potentialLabel = caller.substring(caller.lastIndexOf('.') + 1);
+                    // Trouve la première parenthèse ouvrante '('
+                    int parenthesisIndex = potentialLabel.indexOf('(');
+                    // Le label est la partie AVANT la parenthèse (ou toute la chaîne si pas de parenthèse)
+                    String label = (parenthesisIndex != -1) ? potentialLabel.substring(0, parenthesisIndex) : potentialLabel;
+                    graph.addNode(callerId).setAttribute("ui.label", label); // Utilise le nom nettoyé
                 }
+
+                // Correction pour l'étiquette du nœud (Callee)
                 for (String callee : entry.getValue()) {
                     String calleeId = callee.replaceAll("[^a-zA-Z0-9_]", "_");
+
                     if (graph.getNode(calleeId) == null) {
-                        graph.addNode(calleeId).setAttribute("ui.label", callee.substring(callee.lastIndexOf('.') + 1));
+                        // On nettoie juste les parenthèses, mais on garde le nom complet
+                        String label = callee.replaceAll("\\(.*\\)", ""); // Ex: "client.passerCommande"
+                        graph.addNode(calleeId).setAttribute("ui.label", label);
                     }
+
+                    // Ajouter l'arête
                     String edgeId = callerId + "_to_" + calleeId;
                     if (graph.getEdge(edgeId) == null) {
                         graph.addEdge(edgeId, callerId, calleeId, true);
                     }
-                }
+            }
             }
 
-            // 4. Créer et intégrer l'afficheur JavaFX
+            System.out.println("3. Graphe GraphStream (Appel) rempli avec " + graph.getNodeCount() + " nœuds.");
+
+            // 4. Créer le visualiseur
             Viewer viewer = new FxViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD);
             viewer.enableAutoLayout();
 
-            // Use addDefaultView to create a JavaFX-compatible view
-            FxViewPanel viewPanel = (FxViewPanel) viewer.addDefaultView(false); // false to avoid opening a new window
+            // 5. Obtenir le panneau d'affichage (Méthode correcte pour gs-ui-fx 2.0)
+            View view = viewer.addDefaultView(false); // false pour ne pas ouvrir de fenêtre séparée
+            this.graphStreamView = view; // Stocker la View pour le zoom
 
-            // Lier la taille du panneau à celle du conteneur
+            // Caster la View directement en FxViewPanel
+            FxViewPanel viewPanel = (FxViewPanel) view;
+
+            System.out.println("4. Panneau de vue (Appel) créé.");
+
+            // 6. Lier et ajouter
             viewPanel.prefWidthProperty().bind(graphPane.widthProperty());
             viewPanel.prefHeightProperty().bind(graphPane.heightProperty());
-
-            // Ajouter le panneau à la scène JavaFX
             graphPane.getChildren().add(viewPanel);
+            System.out.println("5. Panneau (Appel) ajouté à la scène.");
 
         } catch (Exception e) {
-            System.err.println("ERREUR INATTENDUE pendant la création du graphe visuel :");
-            e.printStackTrace(); // Affiche l'erreur complète dans la console
+            System.err.println("ERREUR INATTENDUE pendant displayCallGraph :");
+            e.printStackTrace();
         }
     }
 
@@ -758,8 +1061,27 @@ public class MetricsController {
 
         // 1. Créer le graphe GraphStream
         Graph graph = new SingleGraph("CouplingGraph");
-        graph.setAttribute("ui.stylesheet", "node { size: 15px; fill-color: #F7D794; text-size: 12; } " +
-                "edge { text-size: 10; fill-color: #777; arrow-shape: arrow; }");
+        String styleSheet =
+                "node {" +
+                        "   shape: box; " +          // Change la forme en boîte (carré/rectangle)
+                        "   fill-color: #A9D0F5; " +
+                        "   stroke-mode: plain; " +  // Bordure simple
+                        "   stroke-color: #333; " +
+                        "   size-mode: fit; " +      // La taille s'adapte au texte (très important)
+                        "   padding: 10px, 5px; " +  // Espace à l'intérieur de la boîte
+                        "   text-size: 12; " +
+                        "   text-visibility-mode: normal; " +
+                        "}" +
+                        "edge {" +
+                        "   arrow-shape: arrow; " +
+                        "   shape: line; " +         // Lignes droites
+                        "   fill-color: #555; " +
+                        "}" +
+                        "node:selected {" +         // Ce qui se passe si on clique
+                        "   fill-color: #F4D03F; " +
+                        "}";
+
+        graph.setAttribute("ui.stylesheet", styleSheet);
 
         // 2. Remplir le graphe (votre logique est correcte)
         for (Map.Entry<String, Map<String, Double>> entry : couplingGraph.getGraph().entrySet()) {
@@ -800,6 +1122,193 @@ public class MetricsController {
         viewPanel.prefHeightProperty().bind(couplingGraphPane.heightProperty());
         couplingGraphPane.getChildren().add(viewPanel);
     }
+
+// Dans MetricsController.java
+
+    private void handleGenerateGraph() {
+        String sourcePath = sourcePathField.getText();
+        // ... (vérification du chemin) ...
+
+        // Vider les DEUX panneaux
+        graphPane.getChildren().clear();
+        matrixPane.getChildren().clear();
+        graphPane.getChildren().add(new Label("Analyse en cours..."));
+        matrixPane.getChildren().add(new Label("Analyse en cours..."));
+
+        // Créer la Tâche d'arrière-plan (inchangée)
+        Task<CallGraph> analysisTask = new Task<CallGraph>() {
+            @Override
+            protected CallGraph call() throws Exception {
+                SourceCodeAnalyzer analyzer = new SourceCodeAnalyzer();
+                return analyzer.generateCallGraph(sourcePath);
+            }
+        };
+
+        // Que faire quand la tâche réussit (C'EST ICI LA MODIFICATION)
+        analysisTask.setOnSucceeded(event -> {
+            CallGraph resultGraph = analysisTask.getValue(); // Récupère le résultat
+
+            // 1. Appeler la première méthode d'affichage
+            displayCallGraph(resultGraph);
+
+            // 2. Appeler la DEUXIÈME méthode d'affichage
+            displayAdjacencyMatrix(resultGraph);
+        });
+
+        // Que faire si l'analyse échoue
+        analysisTask.setOnFailed(event -> {
+            graphPane.getChildren().clear();
+            matrixPane.getChildren().clear();
+            graphPane.getChildren().add(new Label("Erreur durant l'analyse."));
+            matrixPane.getChildren().add(new Label("Erreur durant l'analyse."));
+            analysisTask.getException().printStackTrace();
+        });
+
+        // Démarrer la tâche
+        new Thread(analysisTask).start();
+    }
+
+    // REMPLACEZ VOTRE ANCIENNE MÉTHODE PAR CELLE-CI
+    private void displayAdjacencyMatrix(CallGraph callGraph) {
+        System.out.println("--- DÉBUT AFFICHAGE MATRICE D'ADJACENCE ---");
+
+        // VÉRIFICATION CRITIQUE : Cible le bon panneau
+        if (matrixPane == null) {
+            System.err.println("ERREUR CRITIQUE : matrixPane est null.");
+            return;
+        }
+        matrixPane.getChildren().clear(); // Nettoie le bon panneau
+
+        if (callGraph == null || callGraph.getGraph().isEmpty()) {
+            matrixPane.getChildren().add(new Label("Aucune relation d'appel trouvée."));
+            return;
+        }
+
+        try {
+            // --- 1. Préparer les données (Trier, mapper, etc.) ---
+            Set<String> allMethodsSet = new TreeSet<>();
+            // ... (logique pour remplir allMethodsSet)
+            for (Map.Entry<String, Set<String>> entry : callGraph.getGraph().entrySet()) {
+                allMethodsSet.add(entry.getKey());
+                allMethodsSet.addAll(entry.getValue());
+            }
+            List<String> allMethods = new ArrayList<>(allMethodsSet);
+            Map<String, Integer> methodIndexMap = new HashMap<>();
+            for (int i = 0; i < allMethods.size(); i++) {
+                methodIndexMap.put(allMethods.get(i), i);
+            }
+
+            // --- 2. Créer la Grille (GridPane) ---
+            GridPane grid = new GridPane();
+            grid.setGridLinesVisible(true);
+
+            // --- 3. Remplir les en-têtes (Ligne 0 et Colonne 0) ---
+            grid.add(createHeaderCell("Appelant \\ Appelé"), 0, 0);
+            for (int i = 0; i < allMethods.size(); i++) {
+                String methodName = allMethods.get(i).replaceAll("\\(.*\\)", "");
+                grid.add(createHeaderCell(methodName), i + 1, 0); // En-têtes Colonnes
+                grid.add(createHeaderCell(methodName), 0, i + 1); // En-têtes Lignes
+            }
+
+            // --- 4. Remplir la matrice avec les appels ---
+            for (Map.Entry<String, Set<String>> entry : callGraph.getGraph().entrySet()) {
+                int callerIndex = methodIndexMap.get(entry.getKey());
+                for (String callee : entry.getValue()) {
+                    int calleeIndex = methodIndexMap.get(callee);
+                    grid.add(createMatrixCell(), calleeIndex + 1, callerIndex + 1);
+                }
+            }
+
+            // --- 5. Mettre la grille dans un ScrollPane et l'afficher ---
+            ScrollPane scrollPane = new ScrollPane(grid);
+            scrollPane.setFitToWidth(true);
+            scrollPane.setFitToHeight(true);
+            scrollPane.prefWidthProperty().bind(matrixPane.widthProperty());
+            scrollPane.prefHeightProperty().bind(matrixPane.heightProperty());
+
+            // AFFICHER DANS LE BON PANNEAU
+            matrixPane.getChildren().add(scrollPane);
+            System.out.println("Matrice d'adjacence affichée.");
+
+        } catch (Exception e) {
+            System.err.println("ERREUR pendant displayAdjacencyMatrix :");
+            e.printStackTrace();
+            matrixPane.getChildren().add(new Label("Erreur fatale : " + e.getMessage()));
+        }
+    }
+
+
+// --- MÉTHODES UTILITAIRES (à ajouter dans votre MetricsController) ---
+
+    /**
+     * Crée une cellule d'en-tête (Label) avec un style
+     */
+    private Label createHeaderCell(String text) {
+        Label label = new Label(text);
+        label.setMaxWidth(Double.MAX_VALUE); // Pour qu'il remplisse la case
+        label.setPadding(new Insets(5));
+        label.setStyle("-fx-background-color: #EEEEEE; -fx-font-weight: bold; -fx-border-color: #CCCCCC; -fx-border-width: 0.5;");
+        // Rotation pour les en-têtes de colonnes (plus lisible si longs)
+        // label.setRotate(-45); // Décommentez si vous préférez
+        return label;
+    }
+
+    /**
+     * Crée une cellule de la matrice (un carré coloré)
+     */
+    private Pane createMatrixCell() {
+        Rectangle square = new Rectangle(20, 20); // Carré de 20x20
+        square.setFill(Color.web("#0078D7")); // Couleur bleue
+
+        // StackPane pour centrer le carré (au cas où la cellule est plus grande)
+        StackPane cellPane = new StackPane(square);
+        cellPane.setPadding(new Insets(2));
+        cellPane.setStyle("-fx-border-color: #DDDDDD; -fx-border-width: 0.5;");
+        return cellPane;
+    }
+
+    /**
+     * Remplit le TreeView avec les packages et les classes
+     * à partir des métriques calculées.
+     */
+    // Dans MetricsController.java
+
+    /**
+     * Remplit le TreeView avec les packages et les classes
+     * à partir des métriques calculées.
+     */
+    private void populateClassTree(Map<String, ClassMetric> classMetrics) {
+        // 1. Créer un nœud racine invisible
+        TreeItem<String> rootItem = new TreeItem<>("Projet");
+        rootItem.setExpanded(true);
+        this.classTreeView.setRoot(rootItem);
+        this.classTreeView.setShowRoot(false); // Cache le nœud "Projet"
+
+        // 2. Grouper les classes par package
+        Map<String, List<ClassMetric>> classesByPackage = classMetrics.values().stream()
+                .collect(Collectors.groupingBy(ClassMetric::getPackageName));
+
+        // 3. Créer les nœuds de package
+        for (String packageName : new TreeSet<>(classesByPackage.keySet())) {
+
+            // Gère le cas où il n'y a pas de package
+            String displayedPackageName = packageName.isEmpty() ? "(Default Package)" : packageName;
+            TreeItem<String> packageItem = new TreeItem<>(displayedPackageName);
+            rootItem.getChildren().add(packageItem);
+
+            // 4. Ajouter les classes (avec leur nom simple) à ce package
+            for (ClassMetric classMetric : classesByPackage.get(packageName)) {
+                // On ajoute juste l'item avec le nom simple. C'est tout.
+                TreeItem<String> classItem = new TreeItem<>(classMetric.getName());
+                packageItem.getChildren().add(classItem);
+            }
+        }
+    }
+
+
+
+
+
 }
 
 

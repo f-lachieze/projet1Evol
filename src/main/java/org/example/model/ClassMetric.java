@@ -51,6 +51,27 @@ public class ClassMetric {
 
     // --- Getters et Setters (pour le MetricsCollector et JavaFX TableViews) ---
 
+    // Dans votre fichier ClassMetric.java
+// (Vous avez probablement déjà un champ "fullName" et une méthode getFullName())
+
+    /**
+     * Retourne le nom simple de la classe (ex: "MaClasse")
+     * à partir du nom complet (ex: "com.exemple.MaClasse").
+     */
+    public String getName() {
+        if (this.fullName == null || this.fullName.isEmpty()) {
+            return "UnknownClass";
+        }
+
+        int lastDot = this.fullName.lastIndexOf('.');
+
+        if (lastDot == -1) {
+            return this.fullName; // Pas de package
+        }
+
+        return this.fullName.substring(lastDot + 1);
+    }
+
     public String getFullName() {
         return fullName;
     }
