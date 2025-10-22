@@ -1,5 +1,7 @@
 package org.example.controller;
 
+import org.example.model.Cluster;
+
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 
@@ -28,14 +30,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.example.model.CallGraph; // Assurez-vous que l'import est correct
-
-
+import org.example.analysis.*;
+import org.example.model.*;
 
 
 // MetricsController.java (Le Cerveau de l'interface)
 import javafx.scene.layout.Pane;
-import org.example.analysis.SourceCodeAnalyzer;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -45,8 +45,6 @@ import javafx.concurrent.Task;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
-import org.example.analysis.MetricsCollector;
-import org.example.model.ClassMetric;
 import com.github.javaparser.ast.CompilationUnit;
 
 // Dans MetricsController.java (Section Imports)
@@ -58,21 +56,12 @@ import java.io.File;
 import javafx.collections.FXCollections;
 import javafx.scene.control.cell.PropertyValueFactory;
 
-import org.example.model.MethodMetric;
-
 // Imports GraphStream
 import org.graphstream.graph.Graph;
 import org.graphstream.graph.implementations.SingleGraph;
 import org.graphstream.ui.fx_viewer.FxViewer;
 import org.graphstream.ui.fx_viewer.FxViewPanel;
 // Dans la section des imports de MetricsController.java
-
-
-import org.example.analysis.CouplingCalculator;
-import org.example.model.ClassCouplingGraph;
-
-
-import org.example.analysis.MethodCallVisitor;
 
 
 import org.graphstream.ui.view.View;
@@ -129,6 +118,23 @@ public class MetricsController {
     @FXML
     private AnchorPane detailedGraphPane; // Le panneau d'affichage à droite
 
+    // NOUVEAUX CHAMPS À AJOUTER POUR L'ONGLET MODULES
+    @FXML
+    private Slider cpSlider;
+
+    @FXML
+    private Label cpLabel;
+
+    @FXML
+    private Button findModulesButton;
+
+    @FXML
+    private TreeView<String> modulesTreeView;
+
+    @FXML
+    private AnchorPane dendrogramPane;
+
+
     @FXML
     private AnchorPane couplingGraphPane; // Le nouveau conteneur
 
@@ -144,6 +150,8 @@ public class MetricsController {
     // 1. AJOUTER CE NOUVEAU CHAMP FXML
     @FXML
     private AnchorPane matrixPane; // Panneau pour l'onglet 2
+
+
 
 
 
@@ -182,6 +190,8 @@ public class MetricsController {
     private Map<String, ClassMetric> currentMetrics; // Pour stocker les résultats
 
     private CallGraph callGraph = new CallGraph();
+
+    private ModuleFinder moduleFinder;
 
     // ========================================================================
     // LOGIQUE DE L'APPLICATION
@@ -331,28 +341,44 @@ public class MetricsController {
 
         // Dans MetricsController.java, à la fin de la méthode initialize()
 
-// --- Initialisation du Slider de couplage ---
-        couplingSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            double threshold = newVal.doubleValue();
-            couplingThresholdLabel.setText(String.format("%.2f", threshold));
-            // Si un graphe a déjà été calculé, on le redessine avec le nouveau seuil
-            if (currentCouplingGraph != null) {
-                displayCouplingGraph(currentCouplingGraph);
-            }
-        });
+
+// --- Initialisation du Slider de COUPLAGE (Ancien onglet) ---
+        if (couplingSlider != null && couplingThresholdLabel != null) { // Ajout de vérifications null
+            couplingSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+                double threshold = newVal.doubleValue();
+                couplingThresholdLabel.setText(String.format("%.2f", threshold));
+                // Si un graphe a déjà été calculé, on le redessine avec le nouveau seuil
+                if (currentCouplingGraph != null) {
+                    // Optionnel : redessiner le graphe de couplage si vous voulez qu'il réagisse au slider
+                    // displayCouplingGraph(currentCouplingGraph);
+                }
+            });
+        } // Fin du listener pour couplingSlider
 
 
-        // NOUVEAU : Gérer le clic sur l'arborescence
+        // --- Initialisation du nouvel onglet MODULES (Exercice 2) ---
+        // CE BLOC EST MAINTENANT À L'EXTÉRIEUR ET AU BON ENDROIT
+        if (cpSlider != null && cpLabel != null) { // Ajout de vérifications null
+            // Lie le label à la valeur du slider (ex: "0.05")
+            cpLabel.textProperty().bind(cpSlider.valueProperty().asString("%.2f"));
+        }
+
+        if (findModulesButton != null) { // Ajout de vérification null
+            // Lie le clic du bouton à une nouvelle méthode
+            findModulesButton.setOnAction(this::handleFindModules);
+        } // Fin de l'initialisation des modules
+
+
+        // --- Initialisation de l'arborescence CLASSE (Explorateur) ---
         if (classTreeView != null) {
             classTreeView.getSelectionModel().selectedItemProperty().addListener(
                     (observable, oldValue, newValue) -> {
-                        // Appeler notre nouvelle méthode de filtrage quand un item est cliqué
                         handleClassSelection(newValue);
                     }
             );
-        }
+        } // Fin de l'initialisation de classTreeView
 
-    }
+    } // Fin de la méthode initialize()
 
     /**
      * Appelé lorsqu'un utilisateur clique sur un élément de l'arborescence.
@@ -896,11 +922,54 @@ public class MetricsController {
             // Afficher le graphe initialement avec un seuil de 0
             displayCouplingGraph(currentCouplingGraph);
 
+            // --- MISE À JOUR POUR LES MODULES ---
+            // 1. Vider les anciens résultats (s'il y en a)
+            if (modulesTreeView != null) {
+                modulesTreeView.setRoot(null);
+            }
+
+            // 2. Construire l'arbre de clustering UNE SEULE FOIS et le stocker
+            if (currentCouplingGraph != null && !currentCouplingGraph.getGraph().isEmpty()) {
+                this.moduleFinder = new ModuleFinder(currentCouplingGraph);
+                this.moduleFinder.buildDendrogram(); // Construit l'arbre en arrière-plan
+
+                // 3. (Optionnel) Affiche les modules par défaut
+                handleFindModules(null);
+
+                displayDendrogram();
+            }
+
             // 4. Afficher le message de succès final
             showAlert("Succès", "Analyse statique terminée ! " + currentMetrics.size() + " classes analysées.", Alert.AlertType.INFORMATION);
 
             // Sélectionne le premier onglet pour montrer les résultats de synthèse
             resultsTabPane.getSelectionModel().select(0);
+
+                    // --- NOUVELLE ÉTAPE POUR LES MODULES ---
+                    if (currentCouplingGraph != null && !currentCouplingGraph.getGraph().isEmpty()) {
+
+                        // 1. Lancer l'algorithme de clustering
+                        ModuleFinder moduleFinder = new ModuleFinder(currentCouplingGraph);
+                        moduleFinder.buildDendrogram();
+
+                        // 2. Lancer l'identification avec un seuil CP (ex: 0.05)
+                        // Vous pouvez lier ce 0.05 à un Slider dans votre interface
+                        double CP_seuil = 0.05;
+                        List<Cluster> modules = moduleFinder.findModules(CP_seuil);
+
+                        // 3. Afficher les modules trouvés
+                        System.out.println("--- Modules Identifiés (CP > " + CP_seuil + ") ---");
+                        for (Cluster module : modules) {
+                            System.out.println("Module trouvé (" + module.getClasses().size() + " classes):");
+                            for (String className : module.getClasses()) {
+                                System.out.println("  -> " + className);
+                            }
+                        }
+                    }
+
+
+
+
         });
 
         // Lorsque la tâche échoue
@@ -914,17 +983,74 @@ public class MetricsController {
         new Thread(analysisTask).start();
     }
 
-    // Dans MetricsController.java
+// DANS MetricsController.java
 
     /**
-     * Construit un graphe GraphStream à partir de l'objet CallGraph et l'affiche dans le Pane JavaFX.
-     * NÉCESSITE les dépendances GraphStream (gs-core et gs-ui-fx).
+     * Appelé lorsque l'utilisateur clique sur le bouton "Identifier les Modules".
+     * Utilise le ModuleFinder (déjà calculé) pour trouver et afficher
+     * les modules basés sur le seuil CP actuel du slider.
      */
+    @FXML
+    private void handleFindModules(ActionEvent event) {
+        // 1. Vérifier que l'analyse a été faite
+        if (this.moduleFinder == null) {
+            if (modulesTreeView != null) {
+                modulesTreeView.setRoot(new TreeItem<>("Veuillez d'abord lancer l'analyse."));
+            }
+            return;
+        }
 
+        // 2. Récupérer la valeur CP du slider
+        double cpValue = cpSlider.getValue();
 
-    // Dans MetricsController.java
-    // Dans MetricsController.java
+        // 3. Lancer l'identification (c'est très rapide)
+        List<Cluster> modules = this.moduleFinder.findModules(cpValue);
 
+        // 4. Appeler la méthode d'affichage
+        displayModulesInTree(modules, cpValue);
+    }
+
+    // DANS MetricsController.java
+
+    /**
+     * Met à jour le TreeView "modulesTreeView" pour afficher les modules trouvés.
+     */
+    private void displayModulesInTree(List<Cluster> modules, double cpValue) {
+        if (modulesTreeView == null) {
+            return;
+        }
+
+        // 1. Créer le nœud racine
+        TreeItem<String> rootItem = new TreeItem<>("Modules trouvés (Couplage > " + String.format("%.2f", cpValue) + ")");
+        rootItem.setExpanded(true);
+        modulesTreeView.setRoot(rootItem);
+
+        // 2. Gérer le cas où aucun module n'est trouvé
+        if (modules.isEmpty()) {
+            rootItem.getChildren().add(new TreeItem<>("Aucun module trouvé pour ce seuil."));
+            return;
+        }
+
+        // 3. Parcourir les modules et les ajouter à l'arbre
+        int moduleCount = 1;
+        // Trier les modules par taille (du plus grand au plus petit)
+        modules.sort((c1, c2) -> Integer.compare(c2.getClasses().size(), c1.getClasses().size()));
+
+        for (Cluster module : modules) {
+            // Nœud principal pour le module
+            TreeItem<String> moduleItem = new TreeItem<>(
+                    "Module " + (moduleCount++) + " (" + module.getClasses().size() + " classes)"
+            );
+            moduleItem.setExpanded(true); // L'ouvrir par défaut
+            rootItem.getChildren().add(moduleItem);
+
+            // Ajouter chaque classe du module comme une "feuille"
+            // (TreeSet pour les trier par ordre alphabétique)
+            for (String className : new TreeSet<>(module.getClasses())) {
+                moduleItem.getChildren().add(new TreeItem<>(className));
+            }
+        }
+    }
 
 
     private void displayCallGraph(CallGraph callGraph) {
@@ -1306,6 +1432,120 @@ public class MetricsController {
     }
 
 
+    /**
+     * Génère la représentation DOT du dendrogramme à partir du cluster racine.
+     */
+    private String generateDendrogramDotString(Cluster root) {
+        StringBuilder dot = new StringBuilder();
+        dot.append("digraph Dendrogram {\n");
+        dot.append("  node [shape=record, fontname=\"Arial\", height=.1];\n"); // Style pour les nœuds
+        dot.append("  edge [arrowhead=none];\n"); // Pas de flèches pour un arbre
+
+        // Map pour stocker les IDs uniques des nœuds Graphviz
+        Map<Cluster, String> nodeIds = new HashMap<>();
+
+        // Lancer la construction récursive
+        addClusterToDot(root, dot, nodeIds);
+
+        dot.append("}\n");
+        return dot.toString();
+    }
+
+    /**
+     * Helper récursif pour ajouter un cluster (et ses enfants) au DOT.
+     */
+    private String addClusterToDot(Cluster cluster, StringBuilder dot, Map<Cluster, String> nodeIds) {
+        // Si on a déjà traité ce nœud, on retourne son ID
+        if (nodeIds.containsKey(cluster)) {
+            return nodeIds.get(cluster);
+        }
+
+        String nodeId;
+        if (cluster.isLeaf()) {
+            // C'est une feuille (une classe)
+            nodeId = "class_" + cluster.getClassName().replaceAll("[^a-zA-Z0-9_]", "_");
+            dot.append(String.format("  %s [label=\"%s\", shape=box];\n",
+                    nodeId, cluster.getClassName()));
+        } else {
+            // C'est un nœud interne (une fusion)
+            // On crée un ID unique basé sur hashCode (simple)
+            nodeId = "node_" + Math.abs(cluster.hashCode());
+
+            // Crée le nœud (on peut y mettre la hauteur/le couplage de fusion)
+            dot.append(String.format("  %s [label=\"\", shape=point];\n", nodeId));
+            // ou label=\"%.3f\", cluster.getHeight() si getHeight existe
+
+            // Appel récursif pour les enfants
+            String leftChildId = addClusterToDot(cluster.getLeftChild(), dot, nodeIds);
+            String rightChildId = addClusterToDot(cluster.getRightChild(), dot, nodeIds);
+
+            // Ajoute les arêtes vers les enfants
+            dot.append(String.format("  %s -> %s;\n", nodeId, leftChildId));
+            dot.append(String.format("  %s -> %s;\n", nodeId, rightChildId));
+        }
+
+        // Stocker l'ID généré pour ce cluster
+        nodeIds.put(cluster, nodeId);
+        return nodeId;
+    }
+
+    /**
+     * Affiche le dendrogramme (arbre de clustering) dans l'onglet dédié.
+     */
+    private void displayDendrogram() {
+        // Vise le bon panneau
+        if (dendrogramPane == null) {
+            System.err.println("ERREUR CRITIQUE: dendrogramPane est null.");
+            return;
+        }
+        dendrogramPane.getChildren().clear();
+
+        // Vérifie si le clustering a été fait
+        if (this.moduleFinder == null) {
+            dendrogramPane.getChildren().add(new Label("Veuillez d'abord lancer l'analyse."));
+            return;
+        }
+
+        // Récupère la racine de l'arbre (peut être null si l'analyse a échoué)
+        Cluster dendrogramRoot = this.moduleFinder.getDendrogramRoot(); // Vous devrez peut-être ajouter ce getter à ModuleFinder
+
+        if (dendrogramRoot == null) {
+            dendrogramPane.getChildren().add(new Label("Impossible de générer le dendrogramme (analyse échouée ou graphe vide?)."));
+            return;
+        }
+
+        try {
+            // 1. Générer le texte DOT pour l'arbre
+            String dotDefinition = generateDendrogramDotString(dendrogramRoot);
+            // System.out.println(dotDefinition); // Pour déboguer le DOT si besoin
+
+            // 2. Exécuter Graphviz (réutilise la méthode helper existante)
+            // Note: Cela va écraser graph.png (ou utiliser un nom différent ?)
+            File imageFile = generateGraphImage(dotDefinition);
+
+            if (imageFile != null && imageFile.exists()) {
+                // 3. Charger et afficher l'image (comme pour l'explorateur)
+                Image image = new Image(new FileInputStream(imageFile));
+                ImageView imageView = new ImageView(image);
+                imageView.setPreserveRatio(true);
+
+                ScrollPane scrollPane = new ScrollPane(imageView);
+                scrollPane.setFitToWidth(true);
+                scrollPane.setFitToHeight(true);
+                scrollPane.prefWidthProperty().bind(dendrogramPane.widthProperty());
+                scrollPane.prefHeightProperty().bind(dendrogramPane.heightProperty());
+
+                dendrogramPane.getChildren().add(scrollPane);
+                System.out.println("Image du dendrogramme affichée.");
+            } else {
+                dendrogramPane.getChildren().add(new Label("Erreur : L'image du dendrogramme n'a pas pu être générée."));
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            dendrogramPane.getChildren().add(new Label("Erreur de génération du dendrogramme : " + e.getMessage()));
+        }
+    }
 
 
 

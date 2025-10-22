@@ -117,6 +117,38 @@
                 </content>
             </Tab>
 
+            <Tab text="Modules et Clustering">
+                <content>
+                    <BorderPane>
+
+                        <top>
+                            <ToolBar BorderPane.alignment="CENTER">
+                                <items>
+                                    <Label text="Seuil de Couplage (CP) :" />
+
+                                    <Slider fx:id="cpSlider" min="0.0" max="1.0" value="0.05" majorTickUnit="0.1" showTickLabels="true" showTickMarks="true" blockIncrement="0.01" />
+
+                                    <Label fx:id="cpLabel" text="0.05" minWidth="40.0" />
+
+                                    <Button fx:id="findModulesButton" text="Identifier les Modules" />
+                                </items>
+                            </ToolBar>
+                        </top>
+
+                        <center>
+                            <TreeView fx:id="modulesTreeView" BorderPane.alignment="CENTER" />
+                        </center>
+
+                    </BorderPane>
+                </content>
+            </Tab>
+
+            <Tab text="Dendrogramme Clustering">
+                <content>
+                    <AnchorPane fx:id="dendrogramPane" />
+                </content>
+            </Tab>
+
 
 
         </TabPane>
