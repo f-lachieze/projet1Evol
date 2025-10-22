@@ -10,6 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import com.github.javaparser.symbolsolver.JavaSymbolSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
+
+// Imports à ajouter en haut de SourceCodeAnalyzer.java
+
+
 /**
  * Classe responsable de la lecture des fichiers sources et de la construction
  * de l'Abstract Syntax Tree (AST) pour chaque fichier.
@@ -19,9 +27,13 @@ public class SourceCodeAnalyzer {
     // Liste pour stocker l'AST de chaque fichier analysé.
     private final List<CompilationUnit> compilationUnits;
 
+    private JavaSymbolSolver symbolSolver;
+
     public SourceCodeAnalyzer() {
         this.compilationUnits = new ArrayList<>();
     }
+
+
 
     /**
      * Parcourt le répertoire source et construit l'AST pour chaque fichier Java.
@@ -29,19 +41,16 @@ public class SourceCodeAnalyzer {
      * @return true si l'analyse a réussi, false sinon.
      */
     public boolean analyze(String sourceDirPath) {
+        System.out.println("Configuration du Symbol Solver...");
+        // ÉTAPE CRUCIALE : Configurer le solveur AVANT de parser
+        setupSymbolSolver(sourceDirPath);
+
         System.out.println("Début de l'analyse du répertoire : " + sourceDirPath);
         File sourceDir = new File(sourceDirPath);
-
-        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
-            System.err.println("Erreur : Le chemin spécifié n'existe pas ou n'est pas un répertoire.");
-            return false;
-        }
-
-        // Appel récursif pour parcourir tous les fichiers dans le répertoire et ses sous-répertoires
+        // ... (le reste de la méthode 'analyze' est identique)
+        // ... (elle appelle processDirectory)
         processDirectory(sourceDir);
-
-        System.out.println("Analyse terminée. Nombre d'unités de compilation (ASTs) trouvées : " +
-                this.compilationUnits.size());
+        // ...
         return !this.compilationUnits.isEmpty();
     }
 
@@ -110,36 +119,63 @@ public class SourceCodeAnalyzer {
     }
 
     public CallGraph generateCallGraph(String sourceDirPath) {
+        this.compilationUnits.clear();
+        boolean parsingSuccess = this.analyze(sourceDirPath); // <-- Cette méthode configure maintenant le solveur
 
-        // --- ÉTAPE 1 : PARSING (ce que vous avez déjà) ---
-        // 'analyze' va remplir la liste 'this.compilationUnits'
-        this.compilationUnits.clear(); // Vider les anciens résultats
-        boolean parsingSuccess = this.analyze(sourceDirPath);
-
-        // Créez le graphe qui servira de collecteur
         CallGraph callGraph = new CallGraph();
+        if (!parsingSuccess) return callGraph;
 
-        if (!parsingSuccess) {
-            System.err.println("Le parsing a échoué, retour d'un graphe vide.");
-            return callGraph; // Retourne un graphe vide
-        }
-
-        // --- ÉTAPE 2 : VISITE (ce qu'il manquait) ---
-        System.out.println("Début de la visite des ASTs pour le graphe d'appel...");
-
-        // Créez le visiteur
+        System.out.println("Début de la visite (avec Symbol Solver)...");
         MethodCallVisitor visitor = new MethodCallVisitor();
-
-        // Visitez chaque fichier parsé
         for (CompilationUnit cu : this.compilationUnits) {
-            // Le visiteur va ajouter les appels trouvés (caller/callee)
-            // directement dans l'objet 'callGraph'
             visitor.visit(cu, callGraph);
         }
 
-        System.out.println("Visite des ASTs terminée.");
-
-        // Retournez le graphe complété
+        System.out.println("Visite terminée.");
         return callGraph;
+    }
+
+    // MÉTHODE MANQUANTE À AJOUTER DANS SourceCodeAnalyzer.java
+
+    // Dans SourceCodeAnalyzer.java
+
+    /**
+     * Configure le Symbol Solver pour qu'il trouve les types.
+     * @param sourceDirPath Le chemin vers le code source à analyser (le répertoire racine du projet).
+     */
+    private void setupSymbolSolver(String sourceDirPath) {
+        CombinedTypeSolver typeSolver = new CombinedTypeSolver();
+
+        // 1. Lui dire de regarder les classes de base de Java (String, Object, etc.)
+        // Il est bon de l'ajouter en premier.
+        typeSolver.add(new ReflectionTypeSolver());
+
+        // 2. Lui dire de regarder le code source du projet analysé
+        // de manière intelligente, en cherchant les racines "main/java" et "test/java"
+        File sourceDir = new File(sourceDirPath);
+
+        // Structure Maven standard
+        File mainJava = new File(sourceDir, "main/java");
+        if (mainJava.exists() && mainJava.isDirectory()) {
+            System.out.println("Ajout du TypeSolver pour : " + mainJava.getAbsolutePath());
+            typeSolver.add(new JavaParserTypeSolver(mainJava));
+        }
+
+        File testJava = new File(sourceDir, "test/java");
+        if (testJava.exists() && testJava.isDirectory()) {
+            System.out.println("Ajout du TypeSolver pour : " + testJava.getAbsolutePath());
+            typeSolver.add(new JavaParserTypeSolver(testJava));
+        }
+
+        // 3. Fallback : si on ne trouve pas de structure standard (ex: projet simple)
+        // On ajoute le répertoire racine, mais seulement si on n'a pas trouvé les autres.
+        if (!mainJava.exists() && !testJava.exists()) {
+            System.out.println("Structure standard non trouvée, ajout du TypeSolver pour : " + sourceDir.getAbsolutePath());
+            typeSolver.add(new JavaParserTypeSolver(sourceDir));
+        }
+
+        // 4. Créer le solveur et le lier à JavaParser
+        this.symbolSolver = new JavaSymbolSolver(typeSolver);
+        StaticJavaParser.getConfiguration().setSymbolResolver(symbolSolver);
     }
 }

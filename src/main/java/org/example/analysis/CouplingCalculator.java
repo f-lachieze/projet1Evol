@@ -1,4 +1,5 @@
-// Dans org.example.analysis/CouplingCalculator.java
+// Dans org.example.analysis.CouplingCalculator.java
+
 package org.example.analysis;
 
 import org.example.model.CallGraph;
@@ -8,52 +9,69 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Calcule le graphe de couplage pondéré entre les classes,
+ * basé sur le graphe d'appel des méthodes.
+ */
 public class CouplingCalculator {
 
     /**
-     * Calcule le graphe de couplage pondéré à partir d'un graphe d'appel.
-     * @param callGraph Le graphe d'appel (méthode -> méthodes).
-     * @return Le graphe de couplage (classe -> classes).
+     * Calcule le graphe de couplage pondéré.
+     * @param callGraph Le graphe d'appel (méthode -> méthodes)
+     * @return Un ClassCouplingGraph (Classe -> Classe -> Poids)
      */
     public ClassCouplingGraph calculate(CallGraph callGraph) {
-        // Étape 1: Compter le nombre de relations (appels) brutes entre chaque paire de classes.
-        // Map<SourceClass, Map<TargetClass, NumberOfCalls>>
-        Map<String, Map<String, Integer>> rawCouplingCounts = new HashMap<>();
-        int totalInterClassCalls = 0; // Le dénominateur de la formule
+
+        // --- Étape A: Compter les appels bruts entre les classes ---
+
+        // Map<ClasseAppelante, Map<ClasseAppelée, NombreAppels>>
+        Map<String, Map<String, Integer>> rawCounts = new HashMap<>();
+        int totalInterClassCalls = 0; // Le DÉNOMINATEUR
 
         for (Map.Entry<String, Set<String>> entry : callGraph.getGraph().entrySet()) {
             String callerMethod = entry.getKey();
-            String callerClass = extractClassName(callerMethod);
+            String callerClass = getClassFromMethodSignature(callerMethod);
+
+            // Si on n'a pas pu extraire la classe, on ignore
+            if (callerClass == null) continue;
 
             for (String calleeMethod : entry.getValue()) {
-                String calleeClass = extractClassName(calleeMethod);
+                String calleeClass = getClassFromMethodSignature(calleeMethod);
+                if (calleeClass == null) continue;
 
-                // On ne compte que les appels INTER-CLASSES (entre classes différentes)
-                if (callerClass != null && calleeClass != null && !callerClass.equals(calleeClass)) {
-                    // Incrémenter le nombre d'appels entre la classe A et la classe B
-                    rawCouplingCounts
-                            .computeIfAbsent(callerClass, k -> new HashMap<>())
+                // On ne compte QUE les appels inter-classes
+                if (!callerClass.equals(calleeClass)) {
+
+                    // Incrémente le compteur pour (ClasseA -> ClasseB)
+                    rawCounts.computeIfAbsent(callerClass, k -> new HashMap<>())
                             .merge(calleeClass, 1, Integer::sum);
 
-                    totalInterClassCalls++; // Incrémenter le nombre total d'appels inter-classes
+                    // Incrémente le dénominateur total
+                    totalInterClassCalls++;
                 }
             }
         }
 
-        // Étape 2: Calculer le poids final en utilisant la formule du TP. [cite: 34]
+        // --- Étape B: Calculer la métrique (le poids) ---
+
         ClassCouplingGraph couplingGraph = new ClassCouplingGraph();
-        if (totalInterClassCalls > 0) {
-            for (Map.Entry<String, Map<String, Integer>> entry : rawCouplingCounts.entrySet()) {
-                String sourceClass = entry.getKey();
-                for (Map.Entry<String, Integer> targetEntry : entry.getValue().entrySet()) {
-                    String targetClass = targetEntry.getKey();
-                    int count = targetEntry.getValue();
 
-                    // Formule : Couplage(A,B) = Compte(A,B) / Total
-                    double weight = (double) count / totalInterClassCalls;
+        // Si le dénominateur est 0 (aucun appel inter-classe), on retourne un graphe vide.
+        if (totalInterClassCalls == 0) {
+            return couplingGraph;
+        }
 
-                    couplingGraph.addCoupling(sourceClass, targetClass, weight);
-                }
+        for (Map.Entry<String, Map<String, Integer>> entry : rawCounts.entrySet()) {
+            String callerClass = entry.getKey();
+            for (Map.Entry<String, Integer> targetEntry : entry.getValue().entrySet()) {
+                String calleeClass = targetEntry.getKey();
+                int count = targetEntry.getValue(); // Numérateur
+
+                // La formule de l'exercice : Numérateur / Dénominateur
+                double weight = (double) count / totalInterClassCalls;
+
+                // Ajouter au graphe final
+                couplingGraph.addCoupling(callerClass, calleeClass, weight);
             }
         }
 
@@ -61,17 +79,31 @@ public class CouplingCalculator {
     }
 
     /**
-     * Extrait le nom complet de la classe à partir de la signature complète d'une méthode.
-     * Ex: "org.example.MaClasse.maMethode(...)" -> "org.example.MaClasse"
+     * Extrait le nom de la classe d'une signature de méthode complète.
+     * Ex: "com.app.Service.methodeA(...)" -> "com.app.Service"
+     * Ex: "client.methodeB(...)" -> "client" (Cas du bug)
      */
-    private String extractClassName(String methodSignature) {
+    private String getClassFromMethodSignature(String methodSignature) {
         int lastDot = methodSignature.lastIndexOf('.');
-        if (lastDot == -1) {
-            return null; // Pas un nom de classe valide
+
+        // Gère le cas où on n'a pas de '.' (peu probable) ou si la signature est invalide
+        if (lastDot == -1 || lastDot == 0) {
+            return null;
         }
-        String potentialClassName = methodSignature.substring(0, lastDot);
-        // Pour les appels comme "objet.methode(...)", le nom de la classe est l'objet lui-même
-        // C'est une approximation, mais c'est ce que notre graphe d'appel nous donne
-        return potentialClassName;
+
+        // On vérifie s'il y a une parenthèse après le dernier point
+        int parenthesis = methodSignature.indexOf('(', lastDot);
+        if (parenthesis != -1) {
+            // Le nom de la classe est tout ce qui précède le dernier point
+            return methodSignature.substring(0, lastDot);
+        }
+
+        // Cas étrange (ex: "client.methodeB"), on suppose que "client" est la "classe"
+        // Ceci est une approximation due au bug du Symbol Solver
+        if (methodSignature.lastIndexOf('.', lastDot -1) == -1) {
+            return methodSignature.substring(0, lastDot);
+        }
+
+        return null; // Format non reconnu
     }
 }
