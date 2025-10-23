@@ -1266,7 +1266,11 @@ public class MetricsController {
             @Override
             protected CallGraph call() throws Exception {
                 SourceCodeAnalyzer analyzer = new SourceCodeAnalyzer();
-                return analyzer.generateCallGraph(sourcePath);
+                 return analyzer.generateCallGraph(sourcePath);
+
+                // NEW:
+              //  SpoonAnalyzer spoonAnalyzer = new SpoonAnalyzer();
+                //return spoonAnalyzer.analyzeProject(sourcePath);
             }
         };
 
