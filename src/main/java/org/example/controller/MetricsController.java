@@ -1075,6 +1075,42 @@ public class MetricsController {
             this.spoonCallGraph = results.spoonGraph;
             this.currentMetrics = results.metrics; // Met à jour les métriques
 
+            // ==============================================================
+            // 3. INITIALISER 'this.moduleFinder' ICI !
+            // ==============================================================
+            // On l'initialise basé sur le graphe JavaParser par défaut (ou Spoon si JP a échoué)
+            // pour que le bouton "Identifier" ait une base de travail après l'analyse.
+            CallGraph graphForInitialModuleAnalysis = null;
+            if (results.jpSuccess && this.javaParserCallGraph != null && !this.javaParserCallGraph.getGraph().isEmpty()) {
+                graphForInitialModuleAnalysis = this.javaParserCallGraph;
+            } else if (results.spoonSuccess && this.spoonCallGraph != null && !this.spoonCallGraph.getGraph().isEmpty()) {
+                graphForInitialModuleAnalysis = this.spoonCallGraph; // Fallback sur Spoon
+            }
+
+            if (graphForInitialModuleAnalysis != null) {
+                try {
+                    ClassCouplingGraph initialCouplingGraph = couplingCalculator.calculate(graphForInitialModuleAnalysis);
+                    if (initialCouplingGraph != null && !initialCouplingGraph.getGraph().isEmpty()) {
+                        System.out.println("DEBUG: Initialisation de this.moduleFinder...");
+                        this.moduleFinder = new ModuleFinder(initialCouplingGraph);
+                        this.moduleFinder.buildDendrogram(); // Construire l'arbre maintenant
+                    } else {
+                        System.err.println("Le graphe de couplage initial est vide, this.moduleFinder non initialisé.");
+                        this.moduleFinder = null; // S'assurer qu'il est null
+                    }
+                } catch(Exception ex) {
+                    System.err.println("Erreur lors de l'initialisation du ModuleFinder:");
+                    ex.printStackTrace();
+                    this.moduleFinder = null;
+                }
+            } else {
+                System.err.println("Aucun CallGraph valide disponible après l'analyse, this.moduleFinder non initialisé.");
+                this.moduleFinder = null; // S'assurer qu'il est null
+            }
+            // ==============================================================
+            // Fin de l'initialisation de 'this.moduleFinder'
+            // ==============================================================
+
             // ==========================================================
             // 3. MISE À JOUR DE L'INTERFACE UTILISATEUR
             // ==========================================================
