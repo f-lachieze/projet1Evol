@@ -156,7 +156,7 @@ public class MetricsController {
                 // Onglet Dendrogramme
                 if (dendrogramPane != null) {
                     System.out.println("DEBUG (updateGraphViews): Appel de displayDendrogram..."); // Garde le debug
-                    // REMPLACER LE COMMENTAIRE PAR CECI :
+
                     displayDendrogram(selectedModuleFinder);
                 }
             } else {
