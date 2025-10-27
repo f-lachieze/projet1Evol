@@ -1274,7 +1274,7 @@ public class MetricsController {
             }
         };
 
-        // Que faire quand la tâche réussit (C'EST ICI LA MODIFICATION)
+
         analysisTask.setOnSucceeded(event -> {
             CallGraph resultGraph = analysisTask.getValue(); // Récupère le résultat
 
