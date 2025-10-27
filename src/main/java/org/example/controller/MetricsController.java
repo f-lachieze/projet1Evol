@@ -123,37 +123,52 @@ public class MetricsController {
             // Recalculer le couplage basé sur le graphe sélectionné
             ClassCouplingGraph selectedCouplingGraph = couplingCalculator.calculate(selectedGraph);
 
+            // === STOCKER LE RÉSULTAT CALCUÉ ICI ===
+            this.currentCouplingGraph = selectedCouplingGraph;
+            // ======================================
+
             // Onglet Graphe de Couplage
             if (couplingGraphPane != null) {
-                displayCouplingGraph(selectedCouplingGraph); // Votre méthode existante
+                // Passe le résultat fraîchement calculé (et stocké)
+                displayCouplingGraph(this.currentCouplingGraph);
             }
 
-            // Onglet Modules et Dendrogramme
-            if (selectedCouplingGraph != null && !selectedCouplingGraph.getGraph().isEmpty()) {
-                ModuleFinder selectedModuleFinder = new ModuleFinder(selectedCouplingGraph);
-                selectedModuleFinder.buildDendrogram();
+            // Onglet Modules et Dendrogramme (utilise le résultat fraîchement calculé)
+            if (this.currentCouplingGraph != null && !this.currentCouplingGraph.getGraph().isEmpty()) {
+                System.out.println("DEBUG (updateGraphViews): Graphe de couplage trouvé (" + this.currentCouplingGraph.getAllClasses().size() + " classes). Création du ModuleFinder..."); // Garde le debug
+
+                ModuleFinder selectedModuleFinder = new ModuleFinder(this.currentCouplingGraph);
+                Cluster root = selectedModuleFinder.buildDendrogram(); // Construit l'arbre
+                if (root != null) {
+                    System.out.println("DEBUG (updateGraphViews): Dendrogramme construit. Racine: " + root);
+                } else {
+                    System.err.println("ERREUR (updateGraphViews): buildDendrogram a retourné null !");
+                }
+
 
                 // Onglet Modules (utilise le slider CP actuel)
                 if (modulesTreeView != null && cpSlider != null) {
+                    // REMPLACER LE COMMENTAIRE PAR CECI :
                     List<Cluster> modules = selectedModuleFinder.findModules(cpSlider.getValue());
-                    displayModulesInTree(modules, cpSlider.getValue()); // Votre méthode existante
+                    displayModulesInTree(modules, cpSlider.getValue());
                 }
 
                 // Onglet Dendrogramme
                 if (dendrogramPane != null) {
-                    // Créer une méthode séparée pour l'affichage du dendrogramme
-                    displayDendrogram(selectedModuleFinder); // Nouvelle méthode (voir ci-dessous)
+                    System.out.println("DEBUG (updateGraphViews): Appel de displayDendrogram..."); // Garde le debug
+                    // REMPLACER LE COMMENTAIRE PAR CECI :
+                    displayDendrogram(selectedModuleFinder);
                 }
             } else {
+                System.err.println("ERREUR (updateGraphViews): this.currentCouplingGraph est null ou vide. Impossible de calculer modules/dendrogramme."); // Garde le debug
                 // Vider les modules et dendrogramme si pas de couplage
                 if (modulesTreeView != null) modulesTreeView.setRoot(null);
                 if (dendrogramPane != null) dendrogramPane.getChildren().clear();
             }
 
         } catch (Exception e) {
-            System.err.println("Erreur lors de la mise à jour des vues dépendantes (couplage/modules):");
-            e.printStackTrace();
-            // Afficher une erreur dans l'UI ?
+            // ... (Gestion erreur) ...
+            this.currentCouplingGraph = null; // S'assurer qu'il est null en cas d'erreur
         }
     }
 
@@ -226,6 +241,10 @@ public class MetricsController {
 
     @FXML private Slider couplingSlider; // Nouveau
     @FXML private Label couplingThresholdLabel; // Nouveau
+
+    @FXML
+    private Button updateCouplingGraphButton;
+
     @FXML private Button zoomInButton; // Nouveau
     @FXML private Button zoomOutButton; // Nouveau
 
@@ -267,6 +286,23 @@ public class MetricsController {
         }
     }
 
+    @FXML
+    private void handleUpdateCouplingGraph(ActionEvent event) {
+        System.out.println("DEBUG: Clic sur Actualiser Graphe Couplage."); // Debug
+        // Vérifie si l'analyse a déjà eu lieu (si currentCouplingGraph existe)
+        if (currentCouplingGraph != null) {
+            // Appelle simplement la méthode d'affichage existante
+            // Elle lira la valeur actuelle du slider
+            displayCouplingGraph(currentCouplingGraph);
+        } else {
+            System.out.println("DEBUG: currentCouplingGraph est null, rien à actualiser.");
+            // Optionnel : Afficher un message si l'analyse n'est pas faite ?
+            if (couplingGraphPane != null) {
+                couplingGraphPane.getChildren().clear();
+                couplingGraphPane.getChildren().add(new Label("Veuillez d'abord lancer l'analyse."));
+            }
+        }
+    }
 
     private ClassCouplingGraph currentCouplingGraph;
     private final CouplingCalculator couplingCalculator = new CouplingCalculator(); // Le calculateur
@@ -454,10 +490,10 @@ public class MetricsController {
                 double threshold = newVal.doubleValue();
                 couplingThresholdLabel.setText(String.format("%.2f", threshold));
                 // Si un graphe a déjà été calculé, on le redessine avec le nouveau seuil
-                if (currentCouplingGraph != null) {
+               // if (currentCouplingGraph != null) {
                     // Optionnel : redessiner le graphe de couplage si vous voulez qu'il réagisse au slider
-                    // displayCouplingGraph(currentCouplingGraph);
-                }
+              //       displayCouplingGraph(currentCouplingGraph);
+             //   }
             });
         } // Fin du listener pour couplingSlider
 
@@ -1389,6 +1425,12 @@ public class MetricsController {
             return;
         }
 
+        // --- NOUVEAU : Récupérer la valeur actuelle du seuil ---
+        double threshold = 0.0; // Valeur par défaut si le slider n'existe pas
+        if (couplingSlider != null) {
+            threshold = couplingSlider.getValue();}
+        System.out.println("DEBUG: Affichage du graphe de couplage avec seuil = " + threshold); // Debug
+
         // 1. Créer le graphe GraphStream
         Graph graph = new SingleGraph("CouplingGraph");
         String styleSheet =
@@ -1413,24 +1455,42 @@ public class MetricsController {
 
         graph.setAttribute("ui.stylesheet", styleSheet);
 
-        // 2. Remplir le graphe (votre logique est correcte)
+        // 2. Remplir le graphe (MODIFICATION ICI POUR FILTRER)
+        boolean edgeAdded = false; // Pour savoir si on a ajouté au moins une arête
         for (Map.Entry<String, Map<String, Double>> entry : couplingGraph.getGraph().entrySet()) {
             String sourceClass = entry.getKey();
-            if (graph.getNode(sourceClass) == null) {
-                graph.addNode(sourceClass).setAttribute("ui.label", sourceClass.substring(sourceClass.lastIndexOf('.') + 1));
-            }
+
             for (Map.Entry<String, Double> targetEntry : entry.getValue().entrySet()) {
                 String targetClass = targetEntry.getKey();
                 double weight = targetEntry.getValue();
-                if (graph.getNode(targetClass) == null) {
-                    graph.addNode(targetClass).setAttribute("ui.label", targetClass.substring(targetClass.lastIndexOf('.') + 1));
-                }
-                String edgeId = sourceClass + "->" + targetClass;
-                if (graph.getEdge(edgeId) == null) {
-                    graph.addEdge(edgeId, sourceClass, targetClass, true)
-                            .setAttribute("ui.label", String.format("%.3f", weight));
-                }
+
+                // --- FILTRE ICI ---
+                // N'ajoute l'arête QUE si son poids est supérieur ou égal au seuil
+                if (weight >= threshold) {
+
+                    // Crée les nœuds s'ils n'existent pas (inchangé)
+                    if (graph.getNode(sourceClass) == null) {
+                        graph.addNode(sourceClass).setAttribute("ui.label", sourceClass.substring(sourceClass.lastIndexOf('.') + 1));
+                    }
+                    if (graph.getNode(targetClass) == null) {
+                        graph.addNode(targetClass).setAttribute("ui.label", targetClass.substring(targetClass.lastIndexOf('.') + 1));
+                    }
+
+                    // Ajoute l'arête filtrée (inchangé)
+                    String edgeId = sourceClass + "->" + targetClass;
+                    if (graph.getEdge(edgeId) == null) {
+                        graph.addEdge(edgeId, sourceClass, targetClass, true)
+                                .setAttribute("ui.label", String.format("%.3f", weight));
+                        edgeAdded = true;
+                    }
+                } // Fin du if (weight >= threshold)
             }
+        } // Fin des boucles
+
+        // Si aucune arête n'a été ajoutée (tout a été filtré), afficher un message
+        if (!edgeAdded && graph.getNodeCount() == 0) { // Vérifie aussi s'il n'y a pas de nœuds isolés
+            couplingGraphPane.getChildren().add(new Label("Aucun couplage supérieur au seuil de " + String.format("%.2f", threshold)));
+            return; // Ne pas afficher de graphe vide
         }
 
         // 3. Créer le visualiseur (Viewer)

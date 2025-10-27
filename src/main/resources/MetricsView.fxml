@@ -90,8 +90,9 @@
                         <children>
                             <HBox alignment="CENTER_LEFT" spacing="10.0">
                                 <Label text="Seuil de couplage :" />
-                                <Slider fx:id="couplingSlider" max="1.0" min="0.0" showTickLabels="true" showTickMarks="true" majorTickUnit="0.1" blockIncrement="0.01" />
-                                <Label fx:id="couplingThresholdLabel" text="0.00" />
+                                <Slider fx:id="couplingSlider" max="1.0" min="0.0" showTickLabels="true" showTickMarks="true" majorTickUnit="0.1" blockIncrement="0.01" HBox.hgrow="ALWAYS" /> <Label fx:id="couplingThresholdLabel" text="0.00" minWidth="40.0" />
+
+                                <Button fx:id="updateCouplingGraphButton" text="Actualiser Graphe" onAction="#handleUpdateCouplingGraph" />
                                 <Button fx:id="zoomOutButton" text="-" onAction="#handleZoomOut" style="-fx-font-weight: bold;"/>
                                 <Button fx:id="zoomInButton" text="+" onAction="#handleZoomIn" style="-fx-font-weight: bold;"/>
                             </HBox>
