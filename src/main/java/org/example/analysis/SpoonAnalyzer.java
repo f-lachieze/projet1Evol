@@ -4,6 +4,8 @@ import spoon.Launcher;
 import spoon.reflect.CtModel;
 import org.example.model.CallGraph;
 
+
+
 public class SpoonAnalyzer {
 
     public CallGraph analyzeProject(String sourceDirectoryPath) {
@@ -14,7 +16,7 @@ public class SpoonAnalyzer {
 
         // Configure Spoon (important for type resolution)
         spoonLauncher.getEnvironment().setAutoImports(true); // Automatically import necessary classes
-        spoonLauncher.getEnvironment().setNoClasspath(false); // Use classpath to resolve external types if available
+        spoonLauncher.getEnvironment().setNoClasspath(true); // Use classpath to resolve external types if available
 
         // Build the Spoon model of the code
         System.out.println("Spoon: Building code model...");

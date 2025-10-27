@@ -9,9 +9,15 @@
     <top>
         <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10;">
             <Label text="Répertoire Source :" />
-            <TextField fx:id="sourcePathField" prefWidth="400" promptText="Entrez le chemin vers le code source..." />
-            <Button text="Parcourir" onAction="#handleBrowse" />
+            <TextField fx:id="sourcePathField" prefWidth="400" promptText="Entrez le chemin vers le code source..." HBox.hgrow="ALWAYS" /> <Button text="Parcourir" onAction="#handleBrowse" />
             <Button text="Analyser" onAction="#handleAnalyze" style="-fx-font-weight: bold;" />
+
+            <Separator orientation="VERTICAL" /> <Label text="Moteur d'Analyse :" style="-fx-padding: 0 0 0 5;"/> <fx:define>
+            <ToggleGroup fx:id="analysisToggleGroup" />
+        </fx:define>
+
+            <RadioButton fx:id="javaParserRadio" text="JavaParser" toggleGroup="$analysisToggleGroup" selected="true" />
+            <RadioButton fx:id="spoonRadio" text="Spoon" toggleGroup="$analysisToggleGroup" />
         </HBox>
     </top>
 

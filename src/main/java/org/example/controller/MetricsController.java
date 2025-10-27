@@ -4,7 +4,6 @@ import org.example.model.Cluster;
 
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.control.Tooltip;
 
 // Imports JavaFX nécessaires (à ajouter en haut de votre fichier)
 import javafx.geometry.Insets;
@@ -46,8 +45,6 @@ import javafx.concurrent.Task;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
-import com.github.javaparser.ast.CompilationUnit;
-
 // Dans MetricsController.java (Section Imports)
 import java.util.*;
 import java.util.stream.Collectors; // Ajouté pour Collectors
@@ -71,6 +68,94 @@ import javafx.scene.control.Alert;
 
 
 public class MetricsController {
+
+    @FXML
+    public RadioButton javaParserRadio;
+    @FXML
+    public RadioButton spoonRadio;
+    // AJOUTEZ CETTE LIGNE
+    @FXML
+    private ToggleGroup analysisToggleGroup;
+
+    /**
+     * Met à jour tous les onglets liés au graphe d'appel (visuel, matrice,
+     * couplage, modules, dendrogramme) en utilisant le CallGraph sélectionné
+     * (JavaParser ou Spoon) via les boutons radio.
+     */
+    private void updateGraphViews() {
+        System.out.println("Mise à jour des vues de graphe...");
+
+        // 1. Déterminer quel CallGraph utiliser
+        CallGraph selectedGraph = null;
+        if (spoonRadio != null && spoonRadio.isSelected() && spoonCallGraph != null) {
+            System.out.println("Utilisation du graphe Spoon.");
+            selectedGraph = spoonCallGraph;
+        } else if (javaParserRadio != null && javaParserRadio.isSelected() && javaParserCallGraph != null) {
+            System.out.println("Utilisation du graphe JavaParser.");
+            selectedGraph = javaParserCallGraph;
+        } else {
+            // Cas où l'analyse n'a pas encore été faite ou a échoué
+            System.out.println("Aucun graphe sélectionné ou disponible.");
+            // Optionnel : Vider tous les panneaux d'affichage
+            if (graphPane != null) graphPane.getChildren().clear();
+            if (matrixPane != null) matrixPane.getChildren().clear();
+            if (couplingGraphPane != null) couplingGraphPane.getChildren().clear();
+            if (modulesTreeView != null) modulesTreeView.setRoot(null);
+            if (dendrogramPane != null) dendrogramPane.getChildren().clear();
+            // Vous pourriez ajouter des Labels "Aucune donnée" ici
+            return;
+        }
+
+        // 2. Mettre à jour les affichages en utilisant le graphe sélectionné
+
+        // Onglet Graphe d'Appel Visuel (GraphStream/Graphviz)
+        if (graphPane != null) {
+            displayCallGraph(selectedGraph); // Votre méthode existante
+        }
+
+        // Onglet Matrice d'Adjacence
+        if (matrixPane != null) {
+            displayAdjacencyMatrix(selectedGraph); // Votre méthode existante
+        }
+
+        // Calculs et affichages dépendants (Couplage, Modules, Dendrogramme)
+        try {
+            // Recalculer le couplage basé sur le graphe sélectionné
+            ClassCouplingGraph selectedCouplingGraph = couplingCalculator.calculate(selectedGraph);
+
+            // Onglet Graphe de Couplage
+            if (couplingGraphPane != null) {
+                displayCouplingGraph(selectedCouplingGraph); // Votre méthode existante
+            }
+
+            // Onglet Modules et Dendrogramme
+            if (selectedCouplingGraph != null && !selectedCouplingGraph.getGraph().isEmpty()) {
+                ModuleFinder selectedModuleFinder = new ModuleFinder(selectedCouplingGraph);
+                selectedModuleFinder.buildDendrogram();
+
+                // Onglet Modules (utilise le slider CP actuel)
+                if (modulesTreeView != null && cpSlider != null) {
+                    List<Cluster> modules = selectedModuleFinder.findModules(cpSlider.getValue());
+                    displayModulesInTree(modules, cpSlider.getValue()); // Votre méthode existante
+                }
+
+                // Onglet Dendrogramme
+                if (dendrogramPane != null) {
+                    // Créer une méthode séparée pour l'affichage du dendrogramme
+                    displayDendrogram(selectedModuleFinder); // Nouvelle méthode (voir ci-dessous)
+                }
+            } else {
+                // Vider les modules et dendrogramme si pas de couplage
+                if (modulesTreeView != null) modulesTreeView.setRoot(null);
+                if (dendrogramPane != null) dendrogramPane.getChildren().clear();
+            }
+
+        } catch (Exception e) {
+            System.err.println("Erreur lors de la mise à jour des vues dépendantes (couplage/modules):");
+            e.printStackTrace();
+            // Afficher une erreur dans l'UI ?
+        }
+    }
 
     // ========================================================================
     // CHAMPS FXML (Correspondant aux fx:id dans MetricsView.fxml)
@@ -152,7 +237,8 @@ public class MetricsController {
     @FXML
     private AnchorPane matrixPane; // Panneau pour l'onglet 2
 
-
+    private CallGraph javaParserCallGraph;
+    private CallGraph spoonCallGraph;
 
 
 
@@ -193,6 +279,25 @@ public class MetricsController {
     private CallGraph callGraph = new CallGraph();
 
     private ModuleFinder moduleFinder;
+
+    // ==========================================================
+    // PLACEZ LA CLASSE INTERNE STATIC ICI
+    // ==========================================================
+    public static class AnalysisResult {
+        public final CallGraph javaParserGraph;
+        public final CallGraph spoonGraph;
+        public final Map<String, ClassMetric> metrics;
+        public final boolean jpSuccess;
+        public final boolean spoonSuccess;
+
+        public AnalysisResult(CallGraph jpGraph, CallGraph spGraph, Map<String, ClassMetric> metrics, boolean jpOk, boolean spOk) {
+            this.javaParserGraph = jpGraph;
+            this.spoonGraph = spGraph;
+            this.metrics = metrics;
+            this.jpSuccess = jpOk;
+            this.spoonSuccess = spOk;
+        }
+    }
 
     // ========================================================================
     // LOGIQUE DE L'APPLICATION
@@ -379,6 +484,21 @@ public class MetricsController {
             );
         } // Fin de l'initialisation de classTreeView
 
+        // Dans initialize()
+
+// --- Initialisation du Switch JavaParser/Spoon ---
+        if (analysisToggleGroup != null) {
+            analysisToggleGroup.selectedToggleProperty().addListener((observable, oldToggle, newToggle) -> {
+                // Si la sélection change (et n'est pas nulle), on met à jour les vues
+                if (newToggle != null) {
+                    System.out.println("Switch sélectionné : " + ((RadioButton)newToggle).getText()); // Debug
+
+                    // >> VÉRIFIEZ QUE CET APPEL EST BIEN LÀ <<
+                    updateGraphViews();
+                }
+            });
+        }
+
     } // Fin de la méthode initialize()
 
     /**
@@ -389,36 +509,61 @@ public class MetricsController {
     /**
      * Appelé lorsqu'un utilisateur clique sur un élément de l'arborescence.
      */
+    /**
+     * Appelé lorsqu'un utilisateur clique sur un élément de l'arborescence.
+     * Filtre et affiche le graphe détaillé en utilisant le CallGraph
+     * actuellement sélectionné (JavaParser ou Spoon).
+     */
     private void handleClassSelection(TreeItem<String> selectedItem) {
-        // 1. S'assurer que l'analyse est faite et qu'on clique bien sur une CLASSE
+        // 1. Vérifier si c'est bien une classe sélectionnée (et non un package ou la racine)
         if (selectedItem == null ||
-                !selectedItem.isLeaf() || // Si ce n'est pas une feuille (c'est un package)
-                selectedItem.getParent() == null || // Si c'est la racine
-                selectedItem.getParent().getParent() == null || // Si son parent est la racine (c'est un package)
-                this.callGraph == null) {
+                !selectedItem.isLeaf() || // isLeaf() vérifie si c'est une "feuille" (pas un package)
+                selectedItem.getParent() == null ||
+                selectedItem.getParent().getParent() == null) { // Vérifie que le parent n'est pas la racine invisible
 
-            detailedGraphPane.getChildren().clear(); // Vider le panneau
+            if (detailedGraphPane != null) detailedGraphPane.getChildren().clear();
             return;
         }
 
-        // --- C'est bien une classe, on reconstruit le nom ---
+        // --- C'est bien une classe ---
 
-        // 2. Obtenir les noms
-        String className = selectedItem.getValue(); // ex: "ClassA"
-        String packageName = selectedItem.getParent().getValue(); // ex: "com.app" ou "(Default Package)"
-
-        // 3. Reconstruire le nom complet
-        String fullClassName;
-        if (packageName.equals("(Default Package)")) {
-            fullClassName = className; // Pas de préfixe de package
-        } else {
-            fullClassName = packageName + "." + className; // ex: "com.app.ClassA"
+        // 2. Déterminer quel graphe source utiliser (selon les boutons radio)
+        CallGraph sourceGraph = null;
+        String graphSourceName = ""; // Pour le message de log
+        if (spoonRadio != null && spoonRadio.isSelected() && spoonCallGraph != null) {
+            sourceGraph = spoonCallGraph;
+            graphSourceName = "Spoon";
+        } else if (javaParserRadio != null && javaParserRadio.isSelected() && javaParserCallGraph != null) {
+            sourceGraph = javaParserCallGraph;
+            graphSourceName = "JavaParser";
         }
 
-        System.out.println("Génération du graphe détaillé pour : " + fullClassName);
+        // Si aucun graphe source n'est disponible (analyse non faite ou échouée pour la source choisie)
+        if (sourceGraph == null) {
+            if (detailedGraphPane != null) {
+                detailedGraphPane.getChildren().clear();
+                // Affiche un message plus précis
+                detailedGraphPane.getChildren().add(new Label("Graphe source (" + (spoonRadio.isSelected() ? "Spoon" : "JavaParser") + ") non disponible."));
+            }
+            System.err.println("handleClassSelection: Graphe source (" + (spoonRadio.isSelected() ? "Spoon" : "JavaParser") + ") est null.");
+            return;
+        }
 
-        // 4. Filtrer le graphe principal
-        CallGraph filteredGraph = filterGraphForClass(fullClassName, this.callGraph);
+        // 3. Reconstruire le nom complet de la classe sélectionnée
+        String className = selectedItem.getValue();
+        String packageName = selectedItem.getParent().getValue();
+        String fullClassName;
+        if (packageName.equals("(Default Package)")) {
+            fullClassName = className;
+        } else {
+            fullClassName = packageName + "." + className;
+        }
+
+        System.out.println("Génération du graphe détaillé pour : " + fullClassName + " (Source: " + graphSourceName + ")");
+
+        // 4. Filtrer le graphe source sélectionné
+        // CORRECTION ICI : Utilise 'sourceGraph' au lieu de 'this.callGraph'
+        CallGraph filteredGraph = filterGraphForClass(fullClassName, sourceGraph);
 
         // 5. Afficher ce nouveau graphe
         displayDetailedGraph(filteredGraph);
@@ -846,31 +991,67 @@ public class MetricsController {
         waitAlert.show();
 
         // Crée une tâche d'arrière-plan pour ne pas bloquer l'interface
-        Task<Boolean> analysisTask = new Task<>() {
+// MODIFICATION 1: La Task retourne maintenant AnalysisResult
+        Task<AnalysisResult> analysisTask = new Task<AnalysisResult>() {
             @Override
-            protected Boolean call() throws Exception {
+            // MODIFICATION 2: La méthode call() retourne AnalysisResult
+            protected AnalysisResult call() throws Exception {
                 // --- DÉBUT DU TRAVAIL EN ARRIÈRE-PLAN ---
+                System.out.println("Lancement des analyses JavaParser et Spoon...");
 
-                // 1. Lancer l'analyse (Lecture et Parsing des fichiers)
-                boolean success = analyzer.analyze(path);
-                if (!success) {
-                    return false; // L'analyse a échoué
+                // Variables pour stocker les résultats
+                CallGraph jpGraph = null;
+                CallGraph spGraph = null;
+                Map<String, ClassMetric> calculatedMetrics = null;
+                boolean jpOk = false;
+                boolean spoonOk = false;
+
+                // --- MODIFICATION 3: Analyse JavaParser ---
+                try {
+                    System.out.println("Analyse JavaParser en cours...");
+                    // 'analyzer' et 'collector' sont vos champs existants
+                    jpGraph = analyzer.generateCallGraph(path); // Appelle la méthode qui fait parse+visit
+
+                    // Calcule les métriques SI l'analyse JP a fonctionné
+                    if (jpGraph != null && !analyzer.getCompilationUnits().isEmpty()) {
+                        calculatedMetrics = collector.calculateMetrics(analyzer.getCompilationUnits());
+                        jpOk = true; // JavaParser a réussi
+                        System.out.println("Analyse JavaParser terminée.");
+                    } else {
+                        System.err.println("L'analyse JavaParser n'a pas produit de graphe ou de métriques.");
+                        // jpOk reste false
+                    }
+                } catch (Exception e) {
+                    System.err.println("ERREUR durant l'analyse JavaParser:");
+                    e.printStackTrace();
+                    // jpOk reste false
                 }
 
-                // 2. Collecter et Calculer les métriques de classe
-                List<CompilationUnit> asts = analyzer.getCompilationUnits();
-                currentMetrics = collector.calculateMetrics(asts);
 
-                // 3. Construire le Graphe d'Appel
-                callGraph = new CallGraph();
-                MethodCallVisitor callVisitor = new MethodCallVisitor();
-                for (CompilationUnit cu : asts) {
-                    callVisitor.visit(cu, callGraph);
+                // --- MODIFICATION 4: Analyse Spoon ---
+                try {
+                    System.out.println("Analyse Spoon en cours...");
+                    SpoonAnalyzer spoonAnalyzer = new SpoonAnalyzer(); // Crée l'analyseur Spoon
+                    spGraph = spoonAnalyzer.analyzeProject(path); // Appelle la méthode d'analyse Spoon
+
+                    // Vérifie si Spoon a retourné un graphe non vide
+                    if (spGraph != null && !spGraph.getGraph().isEmpty()) {
+                        spoonOk = true; // Spoon a réussi
+                        System.out.println("Analyse Spoon terminée.");
+                    } else {
+                        System.err.println("L'analyse Spoon n'a pas produit de graphe.");
+                        // spoonOk reste false
+                    }
+                } catch (Exception e) {
+                    System.err.println("ERREUR durant l'analyse Spoon:");
+                    e.printStackTrace();
+                    // spoonOk reste false
                 }
 
-                return true; // L'analyse a réussi
+                // --- MODIFICATION 5: Retourner l'objet AnalysisResult ---
+                return new AnalysisResult(jpGraph, spGraph, calculatedMetrics, jpOk, spoonOk);
             }
-        };
+        }; // Fin de la Task
 
         // --- GESTION DE LA FIN DE LA TÂCHE (S'exécute sur le thread de l'UI) ---
 
@@ -878,100 +1059,86 @@ public class MetricsController {
         analysisTask.setOnSucceeded(e -> {
             waitAlert.close(); // Ferme la boîte d'attente
 
-            // ====================================================================
-            // MISE À JOUR DE TOUTE L'INTERFACE UTILISATEUR
-            // ====================================================================
+            // ==========================================================
+            // 1. RÉCUPÉRER LES RÉSULTATS DE LA TASK
+            // ==========================================================
+            AnalysisResult results = analysisTask.getValue(); // <-- C'EST ICI !
+            if (results == null) {
+                showAlert("Erreur", "L'analyse n'a retourné aucun résultat.", Alert.AlertType.ERROR);
+                return;
+            }
 
-            // 1. Mise à jour de la SYNTHÈSE (Onglet 1)
-            updateSummary(currentMetrics);
+            // ==========================================================
+            // 2. STOCKER LES RÉSULTATS DANS LES VARIABLES DU CONTRÔLEUR
+            // ==========================================================
+            this.javaParserCallGraph = results.javaParserGraph;
+            this.spoonCallGraph = results.spoonGraph;
+            this.currentMetrics = results.metrics; // Met à jour les métriques
 
-            // 2. Calcul et mise à jour des classements Top 10%
-            List<MethodMetric> allMethods = getAllMethodMetrics(currentMetrics);
-            List<MethodMetric> topMethodsByLoc = getTop10PercentMethodsByLoc(allMethods);
-            topMethodsTable.setItems(FXCollections.observableArrayList(topMethodsByLoc));
+            // ==========================================================
+            // 3. MISE À JOUR DE L'INTERFACE UTILISATEUR
+            // ==========================================================
 
-            List<ClassMetric> topMethodsClasses = getTop10PercentByMethods(currentMetrics);
-            List<ClassMetric> topAttributesClasses = getTop10PercentByAttributes(currentMetrics);
-            topAttributesTable.setItems(FXCollections.observableArrayList(topAttributesClasses));
+            // Mise à jour de la SYNTHÈSE et des TABLES (si les métriques existent)
+            if (this.currentMetrics != null) {
+                updateSummary(this.currentMetrics);
 
-            List<ClassMetric> intersectingClasses = getIntersection(topMethodsClasses, topAttributesClasses);
-            intersectingClassesTable.setItems(FXCollections.observableArrayList(intersectingClasses));
+                // Calcul et mise à jour des classements Top 10%
+                List<MethodMetric> allMethods = getAllMethodMetrics(this.currentMetrics);
+                List<MethodMetric> topMethodsByLoc = getTop10PercentMethodsByLoc(allMethods);
+                topMethodsTable.setItems(FXCollections.observableArrayList(topMethodsByLoc));
 
-            // 3. Mise à jour de l'affichage du Graphe d'Appel (Texte et Visuel)
+                List<ClassMetric> topMethodsClasses = getTop10PercentByMethods(this.currentMetrics);
+                List<ClassMetric> topAttributesClasses = getTop10PercentByAttributes(this.currentMetrics);
+                topAttributesTable.setItems(FXCollections.observableArrayList(topAttributesClasses));
+
+                List<ClassMetric> intersectingClasses = getIntersection(topMethodsClasses, topAttributesClasses);
+                intersectingClassesTable.setItems(FXCollections.observableArrayList(intersectingClasses));
+
+                // Mise à jour de l'arborescence des classes pour l'explorateur
+                if (classTreeView != null) {
+                    populateClassTree(this.currentMetrics);
+                }
+            } else {
+                // Optionnel : Vider les tables si les métriques n'ont pas pu être calculées
+                System.err.println("Aucune métrique n'a été calculée (échec JavaParser ?)");
+                topMethodsTable.getItems().clear();
+                topAttributesTable.getItems().clear();
+                intersectingClassesTable.getItems().clear();
+                if (classTreeView != null) classTreeView.setRoot(null);
+                // Vider summaryGrid ?
+            }
+
+
+            // Mise à jour de l'affichage textuel du graphe (peut-être choisir JP ou Spoon ?)
+            // Ici, on affiche JavaParser par exemple
             if (callGraphTextArea != null) {
-                callGraphTextArea.setText(callGraph.toString());
-            }
-            if (graphPane != null) {
-                displayCallGraph(callGraph);
-            }
-
-            // AJOUTEZ CETTE LIGNE JUSTE ICI :
-            if (matrixPane != null) {
-                displayAdjacencyMatrix(callGraph);
+                if (this.javaParserCallGraph != null) {
+                    callGraphTextArea.setText(this.javaParserCallGraph.toString());
+                } else {
+                    callGraphTextArea.setText("Graphe JavaParser non disponible.");
+                }
             }
 
-            if (classTreeView != null) {
-                // currentMetrics est déjà disponible ici
-                populateClassTree(currentMetrics);
-            }
+            // ==========================================================
+            // 4. APPELER LA MÉTHODE CENTRALE POUR LES AFFICHAGES DE GRAPHES
+            // ==========================================================
+            // updateGraphViews va lire les boutons radio et utiliser
+            // this.javaParserCallGraph ou this.spoonCallGraph en conséquence
+            updateGraphViews();
 
-            ClassCouplingGraph couplingGraph = couplingCalculator.calculate(callGraph);
 
+            // ==========================================================
+            // 5. MESSAGE FINAL
+            // ==========================================================
+            String successMessage = "Analyse terminée. ";
+            if (results.jpSuccess) successMessage += "JavaParser OK. "; else successMessage += "JavaParser ÉCHEC. ";
+            if (results.spoonSuccess) successMessage += "Spoon OK."; else successMessage += "Spoon ÉCHEC.";
+            showAlert("Analyse Terminée", successMessage, Alert.AlertType.INFORMATION);
 
-            // NOUVEAU : Calculer et stocker le graphe de couplage
-            currentCouplingGraph = couplingCalculator.calculate(callGraph);
-            // Afficher le graphe initialement avec un seuil de 0
-            displayCouplingGraph(currentCouplingGraph);
-
-            // --- MISE À JOUR POUR LES MODULES ---
-            // 1. Vider les anciens résultats (s'il y en a)
-            if (modulesTreeView != null) {
-                modulesTreeView.setRoot(null);
-            }
-
-            // 2. Construire l'arbre de clustering UNE SEULE FOIS et le stocker
-            if (currentCouplingGraph != null && !currentCouplingGraph.getGraph().isEmpty()) {
-                this.moduleFinder = new ModuleFinder(currentCouplingGraph);
-                this.moduleFinder.buildDendrogram(); // Construit l'arbre en arrière-plan
-
-                // 3. (Optionnel) Affiche les modules par défaut
-                handleFindModules(null);
-
-                displayDendrogram();
-            }
-
-            // 4. Afficher le message de succès final
-            showAlert("Succès", "Analyse statique terminée ! " + currentMetrics.size() + " classes analysées.", Alert.AlertType.INFORMATION);
-
-            // Sélectionne le premier onglet pour montrer les résultats de synthèse
+            // Sélectionne le premier onglet
             resultsTabPane.getSelectionModel().select(0);
-
-                    // --- NOUVELLE ÉTAPE POUR LES MODULES ---
-                    if (currentCouplingGraph != null && !currentCouplingGraph.getGraph().isEmpty()) {
-
-                        // 1. Lancer l'algorithme de clustering
-                        ModuleFinder moduleFinder = new ModuleFinder(currentCouplingGraph);
-                        moduleFinder.buildDendrogram();
-
-                        // 2. Lancer l'identification avec un seuil CP (ex: 0.05)
-                        // Vous pouvez lier ce 0.05 à un Slider dans votre interface
-                        double CP_seuil = 0.05;
-                        List<Cluster> modules = moduleFinder.findModules(CP_seuil);
-
-                        // 3. Afficher les modules trouvés
-                        System.out.println("--- Modules Identifiés (CP > " + CP_seuil + ") ---");
-                        for (Cluster module : modules) {
-                            System.out.println("Module trouvé (" + module.getClasses().size() + " classes):");
-                            for (String className : module.getClasses()) {
-                                System.out.println("  -> " + className);
-                            }
-                        }
-                    }
-
-
-
-
-        });
+        }); // Fin de setOnSucceeded
 
         // Lorsque la tâche échoue
         analysisTask.setOnFailed(e -> {
@@ -1511,57 +1678,60 @@ public class MetricsController {
 
     /**
      * Affiche le dendrogramme (arbre de clustering) dans l'onglet dédié.
+     * PREND MAINTENANT ModuleFinder en argument.
      */
-    private void displayDendrogram() {
-        // Vise le bon panneau
+    private void displayDendrogram(ModuleFinder finder) { // Reçoit le finder
+        System.out.println("DEBUG: Entrée dans displayDendrogram."); // <-- DEBUG 1
+
         if (dendrogramPane == null) {
-            System.err.println("ERREUR CRITIQUE: dendrogramPane est null.");
+            System.err.println("ERREUR CRITIQUE: dendrogramPane est null."); // <-- DEBUG 2
             return;
         }
         dendrogramPane.getChildren().clear();
 
-        // Vérifie si le clustering a été fait
-        if (this.moduleFinder == null) {
-            dendrogramPane.getChildren().add(new Label("Veuillez d'abord lancer l'analyse."));
+        if (finder == null) {
+            System.out.println("DEBUG: Le ModuleFinder reçu est null."); // <-- DEBUG 3
+            dendrogramPane.getChildren().add(new Label("Veuillez d'abord lancer l'analyse et sélectionner une source."));
             return;
         }
 
-        // Récupère la racine de l'arbre (peut être null si l'analyse a échoué)
-        Cluster dendrogramRoot = this.moduleFinder.getDendrogramRoot(); // Vous devrez peut-être ajouter ce getter à ModuleFinder
+        // Récupère la racine (buildDendrogram a déjà été appelé dans updateGraphViews)
+        Cluster dendrogramRoot = finder.getDendrogramRoot();
 
         if (dendrogramRoot == null) {
-            dendrogramPane.getChildren().add(new Label("Impossible de générer le dendrogramme (analyse échouée ou graphe vide?)."));
+            System.out.println("DEBUG: dendrogramRoot est null (clustering échoué ou graphe de couplage vide?)."); // <-- DEBUG 4
+            dendrogramPane.getChildren().add(new Label("Impossible de générer le dendrogramme (analyse échouée ou graphe de couplage vide?)."));
             return;
         }
+        System.out.println("DEBUG: Racine du dendrogramme trouvée."); // <-- DEBUG 5
 
         try {
-            // 1. Générer le texte DOT pour l'arbre
+            System.out.println("DEBUG: Tentative de génération du DOT pour le dendrogramme..."); // <-- DEBUG 6
             String dotDefinition = generateDendrogramDotString(dendrogramRoot);
-            // System.out.println(dotDefinition); // Pour déboguer le DOT si besoin
+            System.out.println("DEBUG: DOT généré."); // <-- DEBUG 7
 
-            // 2. Exécuter Graphviz (réutilise la méthode helper existante)
-            // Note: Cela va écraser graph.png (ou utiliser un nom différent ?)
             File imageFile = generateGraphImage(dotDefinition);
+            System.out.println("DEBUG: Tentative de génération de l'image terminée."); // <-- DEBUG 8
 
             if (imageFile != null && imageFile.exists()) {
-                // 3. Charger et afficher l'image (comme pour l'explorateur)
+                System.out.println("DEBUG: L'image existe. Chargement..."); // <-- DEBUG 9
+                // ... (code pour charger et afficher l'ImageView) ...
                 Image image = new Image(new FileInputStream(imageFile));
                 ImageView imageView = new ImageView(image);
                 imageView.setPreserveRatio(true);
-
                 ScrollPane scrollPane = new ScrollPane(imageView);
                 scrollPane.setFitToWidth(true);
                 scrollPane.setFitToHeight(true);
                 scrollPane.prefWidthProperty().bind(dendrogramPane.widthProperty());
                 scrollPane.prefHeightProperty().bind(dendrogramPane.heightProperty());
-
                 dendrogramPane.getChildren().add(scrollPane);
-                System.out.println("Image du dendrogramme affichée.");
+                System.out.println("Image du dendrogramme affichée."); // <-- DEBUG 10
             } else {
+                System.err.println("ERREUR: L'image n'a pas été générée ou est introuvable."); // <-- DEBUG 11
                 dendrogramPane.getChildren().add(new Label("Erreur : L'image du dendrogramme n'a pas pu être générée."));
             }
-
         } catch (Exception e) {
+            System.err.println("ERREUR Exception dans displayDendrogram:"); // <-- DEBUG 12
             e.printStackTrace();
             dendrogramPane.getChildren().add(new Label("Erreur de génération du dendrogramme : " + e.getMessage()));
         }
