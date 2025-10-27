@@ -4,6 +4,7 @@ import org.example.model.Cluster;
 
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.control.Tooltip;
 
 // Imports JavaFX nécessaires (à ajouter en haut de votre fichier)
 import javafx.geometry.Insets;
@@ -1332,6 +1333,20 @@ public class MetricsController {
             GridPane grid = new GridPane();
             grid.setGridLinesVisible(true);
 
+            // --- AJOUTER CETTE PARTIE POUR LES CONTRAINTES DE COLONNE ---
+            int numberOfColumns = allMethods.size() + 1; // +1 pour la colonne des en-têtes de ligne
+            double minColumnWidth = 300.0; // Essayez cette valeur (en pixels), ajustez si besoin
+
+            for (int i = 0; i < numberOfColumns; i++) {
+                ColumnConstraints colConst = new ColumnConstraints();
+                colConst.setMinWidth(minColumnWidth);
+                // Optionnel : Pourrait aider si le texte est long mais pas assez pour forcer la largeur
+                 colConst.setPrefWidth(Region.USE_COMPUTED_SIZE);
+                grid.getColumnConstraints().add(colConst);
+            }
+            System.out.println("DEBUG: Ajout de " + numberOfColumns + " ColumnConstraints avec minWidth=" + minColumnWidth); // Message de débogage
+// --- FIN DE L'AJOUT ---
+
             // --- 3. Remplir les en-têtes (Ligne 0 et Colonne 0) ---
             grid.add(createHeaderCell("Appelant \\ Appelé"), 0, 0);
             for (int i = 0; i < allMethods.size(); i++) {
@@ -1377,9 +1392,10 @@ public class MetricsController {
         Label label = new Label(text);
         label.setMaxWidth(Double.MAX_VALUE); // Pour qu'il remplisse la case
         label.setPadding(new Insets(5));
-        label.setStyle("-fx-background-color: #EEEEEE; -fx-font-weight: bold; -fx-border-color: #CCCCCC; -fx-border-width: 0.5;");
+        label.setStyle("-fx-font-size: 14px; -fx-background-color: #EEEEEE; -fx-font-weight: bold; -fx-border-color: #CCCCCC; -fx-border-width: 0.5;");
+
         // Rotation pour les en-têtes de colonnes (plus lisible si longs)
-        // label.setRotate(-45); // Décommentez si vous préférez
+         //label.setRotate(-45); // Décommentez si vous préférez
         return label;
     }
 
